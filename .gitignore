@@ -4,3 +4,7 @@
 ckpt
 log
 __pycache__
+=======
+*.pyc
+/env
+/data/HeadPoseImageDatabase

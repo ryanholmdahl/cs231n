@@ -21,6 +21,8 @@ import re
 import random
 import math
 
+import matplotlib.pyplot as plt
+
 ORIG_DB_DIR = './HeadPoseImageDatabase'
 CROPPED_DB_DIR = './HeadPoseImageDatabase_cropped'
 IMG_SIZE = 320
@@ -55,6 +57,7 @@ def construct_splits(dir, img_params, split):
     val = fn_pairings[train_max_idx: val_max_idx]
     test = fn_pairings[val_max_idx:]
     split_fn_names = (train, val, test)
+
     return split_fn_names
 
 
@@ -72,6 +75,25 @@ def read_dataset(dir):
             img = (imread(fn)[:, :, :3]).astype(np.float32)
             person_number = get_person_number_from_img_path(img_path)
             imgs[person_number][img_path] = img
+    return imgs
+
+def read_dataset_by_splits(dir, splits):
+    def load_imgs(dir, img_fn_pairs):
+        imgs = []
+        for fn_pair in img_fn_pairs:
+            img_pair = []
+            for fn in fn_pair:
+                person_number = fn[6:8]
+                img_path = '{}/Person{}/{}.jpg'.format(dir, person_number, fn)
+                img = (imread(img_path)[:, :, :3]).astype(np.float32)
+                img_pair.append(img)
+            imgs.append(tuple(img_pair))
+        return imgs
+
+    train_imgs = load_imgs(dir, splits[0])
+    val_imgs = load_imgs(dir, splits[1])
+    test_imgs = load_imgs(dir, splits[2])
+    imgs = [train_imgs, val_imgs, test_imgs]
     return imgs
 
 
@@ -245,12 +267,10 @@ def escape_img_parms(img_params):
 
 
 if __name__ == '__main__':
-    # input_params = ((re.escape('+15'), re.escape('+15')))
-    # output_params = (re.escape('+30'), re.escape('+75'))
     input_params = (15, 15)
     output_params = (30, 75)
     img_params = (input_params, output_params)
     split = (.65, .20, .20)
-    data_splits = construct_splits(CROPPED_DB_DIR, img_params, split)
-    print data_splits
-    print len(data_splits[0]), len(data_splits[1]), len(data_splits[2])
+    data_splits_fns = construct_splits(CROPPED_DB_DIR, img_params, split)
+    data_splits = read_dataset_by_splits(CROPPED_DB_DIR, data_splits_fns)
+    imsave('./dummy_data.jpg', data_splits[0][0][0])

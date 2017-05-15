@@ -9,7 +9,15 @@ Ryan Holmdahl <ryanlh@stanford.edu>
 
 import numpy as np
 import tensorflow as tf
+import os
 from util import minibatches, Progbar, vectorize_stances
+
+
+class Config:
+    def __init__(self, params):
+        for key in params:
+            setattr(self, key, params[key])
+
 
 class Model(object):
     """Abstracts a Tensorflow graph for a learning task.
@@ -17,6 +25,9 @@ class Model(object):
     We use various Model classes as usual abstractions to encapsulate tensorflow
     computational graphs.
     """
+    def __init__(self, params):
+        self.config = Config(params)
+
     def add_placeholders(self):
         """Adds placeholder variables to tensorflow computational graph.
 
@@ -30,7 +41,7 @@ class Model(object):
         """
         raise NotImplementedError("Each Model must re-implement this method.")
 
-    def create_feed_dict(self, inputs_batch, outputs_batch):
+    def create_feed_dict(self, inputs_batch, outputs_batch=None):
         """Creates the feed_dict for one step of training.
 
         A feed_dict takes the form of:
@@ -82,19 +93,24 @@ class Model(object):
 
         raise NotImplementedError("Each Model must re-implement this method.")
 
-    def train_on_batch(self, sess, inputs_batch, outputs_batch=None):
+    def train_on_batch(self, sess, inputs_batch, outputs_batch, get_loss=False):
         """Perform one step of gradient descent on the provided batch of data.
 
         Args:
             sess: tf.Session()
             inputs_batch: batch of image inputs
             outputs_batch: batch of output (rotated) images
+            get_loss: whether to calculate the batch loss
         Returns:
-            loss: loss over the batch (a scalar)
+            loss: loss over the batch (a scalar) or zero if not requested
         """
         feed = self.create_feed_dict(inputs_batch, outputs_batch)
-        _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
-        return loss
+        if get_loss:
+            _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
+            return loss
+        else:
+            sess.run(self.train_op, feed_dict=feed)
+            return 0
 
     def predict_on_batch(self, sess, inputs_batch):
         """Make predictions for the provided batch of data
@@ -109,29 +125,63 @@ class Model(object):
         preds = sess.run(self.pred, feed_dict=feed)
         return preds
 
+    def eval_on_batch(self, sess, inputs_batch, outputs_batch):
+        """Evaluate the loss on a given batch
+
+        Args:
+            sess: tf.Session()
+            inputs_batch
+            outputs_batch
+        Returns:
+            loss: loss over the batch (a scalar)
+        """
+        feed = self.create_feed_dict(inputs_batch, outputs_batch)
+        loss = sess.run(self.loss, feed_dict=feed)
+        return loss
+
+    def eval_batches(self, sess, eval_set, num_batches):
+        """Evaluate the loss on a number of given minibatches of a dataset.
+
+        Args:
+            sess: tf.Session()
+            eval_set: full dataset, as passed to run_epoch
+            num_batches: number of batches to evaluate
+        Returns:
+            loss: loss over the batches (a scalar)
+        """
+        losses = []
+        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(eval_set, self.config.batch_size)):
+            if i >= num_batches:
+                break
+            loss = self.eval_on_batch(sess, inputs_batch, outputs_batch)
+            losses.append(loss)
+        return np.mean(losses)
+
     def run_epoch(self, sess, train_examples, dev_set):
         prog = Progbar(target=1 + train_examples[0].shape[0] / self.config.batch_size)
         for i, (inputs_batch, outputs_batch) in enumerate(minibatches(train_examples, self.config.batch_size)):
-            loss = self.train_on_batch(sess, inputs_batch, outputs_batch)
+            loss = self.train_on_batch(sess, inputs_batch, outputs_batch, get_loss=True)
             prog.update(i + 1, [("train loss", loss)])
-        print "Evaluating on train set"
-        # ToDo: Insert Code for evaluating train output
-        train_score = 0.0
-        print "Evaluating on dev set"
-        # ToDo: Insert Code for evaluating dev output
-        dev_score = 0.0
-        return dev_score
+        print("")
+        print("Evaluating on train set...")
+        train_loss = self.eval_batches(sess, train_examples, self.config.n_eval_batches)
+        print("Train Loss: {0:.6f}".format(train_loss))
+        print("Evaluating on dev set...")
+        dev_loss = self.eval_batches(sess, dev_set, self.config.n_eval_batches)
+        print("Dev Loss: {0:.6f}".format(dev_loss))
+        return dev_loss
 
     def fit(self, sess, saver, train_examples, dev_set):
         best_dev_score = 0
         for epoch in range(self.config.n_epochs):
-            print "Epoch {:} out of {:}".format(epoch + 1, self.config.n_epochs)
+            print("Epoch {:} out of {:}".format(epoch + 1, self.config.n_epochs))
             dev_score = self.run_epoch(sess, train_examples, dev_set)
             if dev_score > best_dev_score:
                 best_dev_score = dev_score
                 if saver:
-                    print "New best dev! Saving model in ./data/weights/stance.weights"
-                    saver.save(sess, './data/weights/stance.weights')
+                    save_path = os.path.join(self.config.ckpt_path, self.config.model_name)
+                    print("New best dev! Saving model in {}".format(save_path))
+                    saver.save(sess, save_path)
 
     def build(self):
         self.add_placeholders()

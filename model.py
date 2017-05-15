@@ -172,12 +172,12 @@ class Model(object):
         return dev_loss
 
     def fit(self, sess, saver, train_examples, dev_set):
-        best_dev_score = 0
+        best_dev_loss = float('inf')
         for epoch in range(self.config.n_epochs):
             print("Epoch {:} out of {:}".format(epoch + 1, self.config.n_epochs))
-            dev_score = self.run_epoch(sess, train_examples, dev_set)
-            if dev_score > best_dev_score:
-                best_dev_score = dev_score
+            dev_loss = self.run_epoch(sess, train_examples, dev_set)
+            if dev_loss < best_dev_loss:
+                best_dev_loss = dev_loss
                 if saver:
                     save_path = os.path.join(self.config.ckpt_path, self.config.model_name)
                     print("New best dev! Saving model in {}".format(save_path))

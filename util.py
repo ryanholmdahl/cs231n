@@ -13,6 +13,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from matplotlib import image as mpimg
+
 
 def vectorize_stances(stances):
     v_stances = []
@@ -20,6 +22,22 @@ def vectorize_stances(stances):
         s = np.where(row == 1.0)
         v_stances.append(s[0].tolist()[0])
     return v_stances
+
+
+def show_image_example(sess, model, input_sample, output_sample):
+    figure = plt.figure()
+    a = figure.add_subplot(1, 3, 1)
+    imgplot = plt.imshow(input_sample)
+    a.set_title("Input")
+    a = figure.add_subplot(1, 3, 2)
+    model_output = model.predict_on_batch(sess, np.expand_dims(input_sample, axis=0))
+    imgplot = plt.imshow(np.squeeze(model_output, axis=0))
+    a.set_title("Output")
+    a = figure.add_subplot(1, 3, 3)
+    imgplot = plt.imshow(output_sample)
+    a.set_title("Truth")
+    figure.savefig('fig.png')
+
 
 def get_minibatches(data, minibatch_size, shuffle=True):
     """

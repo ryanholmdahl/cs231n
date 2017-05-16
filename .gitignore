@@ -1,4 +1,5 @@
 *.iml
+/idea
 .idea/misc.xml
 *.xml
 ckpt
@@ -8,3 +9,6 @@ __pycache__
 *.pyc
 /env
 /data/HeadPoseImageDatabase
+figs
+figs2
+

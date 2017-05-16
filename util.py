@@ -24,7 +24,7 @@ def vectorize_stances(stances):
     return v_stances
 
 
-def show_image_example(sess, model, input_sample, output_sample):
+def show_image_example(sess, model, input_sample, output_sample, name=None):
     figure = plt.figure()
     a = figure.add_subplot(1, 3, 1)
     imgplot = plt.imshow(input_sample)
@@ -36,7 +36,11 @@ def show_image_example(sess, model, input_sample, output_sample):
     a = figure.add_subplot(1, 3, 3)
     imgplot = plt.imshow(output_sample)
     a.set_title("Truth")
-    figure.savefig('fig.png')
+    if name is None:
+        figure.savefig('fig.png')
+    else:
+        figure.savefig(name)
+    plt.close()
 
 
 def get_minibatches(data, minibatch_size, shuffle=True):

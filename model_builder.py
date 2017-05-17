@@ -28,31 +28,39 @@ class ModularModel(Model):
         return prev_output
 
     def add_fixed_size_embed(self, prev_output):
-        embed_width = int(self.config.im_width / 2 ** self.config.out_conv_layers)
-        embed_height = int(self.config.im_height / 2 ** self.config.out_conv_layers)
+        scaling_factor = 1
+        for stride in self.config.out_conv_stride:
+            scaling_factor *= stride
+        embed_width = int(self.config.im_width / scaling_factor)
+        embed_height = int(self.config.im_height / scaling_factor)
         embed_dim = embed_width * embed_height * self.config.embed_channels
         image_embed = tf.layers.dense(prev_output, embed_dim, activation=tf.nn.relu,
                                       kernel_initializer=tf.contrib.layers.xavier_initializer(), name='embed')
         embed_out_dim = (-1, embed_height, embed_width, self.config.embed_channels)
         return tf.reshape(image_embed, embed_out_dim)
 
-    def add_out_convolution(self, prev_output):
-        for i in range(self.config.out_conv_layers - 1):
-            prev_unpooled = unpool(prev_output)
-            pad_val = int((self.config.out_conv_dim[i] - 1) / 2)
-            prev_padded = tf.pad(prev_unpooled, [[0, 0], [pad_val, pad_val], [pad_val, pad_val], [0, 0]])
-            prev_output = tf.layers.conv2d(prev_padded, self.config.out_conv_filters[i],
-                                           self.config.out_conv_dim[i], activation=tf.nn.relu,
+    def add_out_unconvolution(self, prev_output):
+        for i in range(self.config.out_conv_layers):
+            prev_unpooled = unpool(prev_output, self.config.out_conv_stride[i])
+            prev_output = tf.layers.conv2d(prev_unpooled, self.config.out_conv_filters[i],
+                                           self.config.out_conv_dim[i], activation=tf.nn.relu, padding='SAME',
                                            kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
                                            name='outconv{}'.format(i))
-        prev_unpooled = unpool(prev_output)
-        pad_val = int((self.config.output_conv_dim - 1) / 2)
-        prev_padded = tf.pad(prev_unpooled, [[0, 0], [pad_val, pad_val], [pad_val, pad_val], [0, 0]])
-        return tf.layers.conv2d(prev_padded, self.config.im_channels,
-                                self.config.output_conv_dim,
-                                strides=self.config.output_conv_stride,
-                                kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
-                                name='out')
+        return prev_output
+
+    def add_out_deconvolution(self, prev_output):
+        for i in range(self.config.out_conv_layers):
+            in_filters = self.config.out_conv_filters[i - 1] if i > 0 else prev_output.get_shape()[3]
+            W = tf.get_variable("deconvW{}".format(i), shape=(
+                self.config.out_conv_dim[i], self.config.out_conv_dim[i], self.config.out_conv_filters[i], in_filters),
+                                initializer=tf.contrib.layers.xavier_initializer_conv2d())
+            prev_shape = prev_output.get_shape().as_list()
+            out_shape = (self.config.batch_size, prev_shape[1] * self.config.out_conv_stride[i],
+                         prev_shape[2] * self.config.out_conv_stride[i], self.config.out_conv_filters[i])
+            prev_output = tf.nn.conv2d_transpose(prev_output, W, out_shape,
+                                                 [1, self.config.out_conv_stride[i], self.config.out_conv_stride[i], 1],
+                                                 padding='SAME')
+        return prev_output
 
     def add_out_fc(self, prev_output):
         prev_output = tf.layers.dense(prev_output,
@@ -65,7 +73,10 @@ class ModularModel(Model):
         prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
         if self.config.out_conv_layers > 0:
             prev_output = self.add_fixed_size_embed(prev_output)
-            return self.add_out_convolution(prev_output)
+            if self.config.use_transpose:
+                return self.add_out_deconvolution(prev_output)
+            else:
+                return self.add_out_unconvolution(prev_output)
         else:
             return self.add_out_fc(prev_output)
 

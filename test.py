@@ -8,8 +8,8 @@ params = {}
 params['lr'] = 1e-3
 params['lr_decay'] = 0.96
 params['lr_decay_steps'] = 100
-params['im_width'] = 320
-params['im_height'] = 320
+params['im_width'] = 32
+params['im_height'] = 32
 params['im_channels'] = 3
 params['in_conv_layers'] = 1
 params['in_conv_filters'] = [10]
@@ -19,17 +19,16 @@ params['fc_layers'] = 2
 params['fc_dim'] = [256, 256]
 params['embed_channels'] = 100
 params['out_conv_layers'] = 2
-params['out_conv_filters'] = [8, 16]
+params['out_conv_filters'] = [8, 3]
 params['out_conv_dim'] = [5, 5]
 params['out_conv_stride'] = [1, 1]
-params['output_conv_dim'] = 5
-params['output_conv_stride'] = 1
 params["model_name"] = "test"
 params["ckpt_path"] = "ckpt"
 params["log_path"] = "log"
 params["n_epochs"] = 10
 params["n_eval_batches"] = 1
-params["batch_size"] = 22
+params["batch_size"] = 1
+params["use_transpose"] = False
 
 class TestGenerator:
     def __init__(self, w, h, c, b):
@@ -55,6 +54,8 @@ train_tuples, valid_tuples, test_tuples = pickle.load(open("data/data (1).p", "r
 train_examples = [np.array([np.array(tup[0]) for tup in train_tuples]), np.array([np.array(tup[1]) for tup in train_tuples])]
 valid_examples = [np.array([np.array(tup[0]) for tup in valid_tuples]), np.array([np.array(tup[1]) for tup in valid_tuples])]
 
+train_examples = [np.array([np.zeros((32,32,3)) for _ in range(10)]), np.array([np.zeros((32,32,3)) for _ in range(10)])]
+valid_examples = train_examples
 
 m = ModularModel(params)
 m.build()

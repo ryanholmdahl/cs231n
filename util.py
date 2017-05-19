@@ -14,10 +14,8 @@ import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib import image as mpimg
+import ntpath
 
-<<<<<<< HEAD
-def show_image_example(sess, model, input_sample, output_sample):
-=======
 
 def vectorize_stances(stances):
     v_stances = []
@@ -27,8 +25,12 @@ def vectorize_stances(stances):
     return v_stances
 
 
+def path_leaf(path):
+    head, tail = ntpath.split(path)
+    return tail or ntpath.basename(head)
+
+
 def show_image_example(sess, model, input_sample, output_sample, name=None):
->>>>>>> 8e4a47c49001c907a659c7d344c9cbfb2afec90f
     figure = plt.figure()
     a = figure.add_subplot(1, 3, 1)
     imgplot = plt.imshow(input_sample)

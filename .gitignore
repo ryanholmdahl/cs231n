@@ -5,12 +5,13 @@
 ckpt
 log
 __pycache__
-=======
 *.pyc
 /env
 /data/HeadPoseImageDatabase
 figs
 figs2
+toy_pics
+toy_pairs
 .DS_Store
 /data/sd18
 /data/colorferet

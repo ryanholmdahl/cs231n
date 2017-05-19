@@ -8,6 +8,8 @@ Ryan Holmdahl <ryanlh@stanford.edu>
 """
 import glob
 import os
+import bz2
+import uuid
 
 # ---------
 # CONSTANTS
@@ -16,6 +18,8 @@ GRAY_FERET_CD1_DIR = './colorferet/colorferet/dvd2/gray_feret_cd1/data/images'
 GRAY_FERET_CD2_DIR = './colorferet/colorferet/dvd2/gray_feret_cd2/data/images'
 FRONTAL_POSE = 'fa'
 PROFILE_RIGHT = 'pr'
+SAVE_DIR = './joint_data'
+
 
 def find_img_pairs(dirs, img_1_pose, img_2_pose):
     """
@@ -95,8 +99,37 @@ def check_pair(img1_fn_parse, img2_fn_parse, pose1, pose2):
         return False
 
 
+def unzip_and_save_files(img_pairs, save_dir, pose1, pose2):
+    """ Unzip and save files for the img_pairs into the save_dir.
+
+    :param img_pairs: List of (img1, img2) pairs where img1 and img2 are relative file paths.
+    :save_dir: Directory to save unzipped files to
+    :pose1: Pose 1
+    :pose2: Pose 2
+    :return:
+    """
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    num_pairs = len(img_pairs)
+    for pair_idx, pair in enumerate(img_pairs):
+        pair_id = uuid.uuid4().hex
+        for img_fp in pair:
+            img_parse = parse_fn(img_fp)
+            if img_parse['POSE'] == pose1:
+                prefix = 'x'
+            elif img_parse['POSE'] == pose2:
+                prefix = 'y'
+            else:
+                raise Exception('You fucked something up, previously.')
+            zipfile = bz2.BZ2File(img_fp)  # open the file
+            data = zipfile.read()  # get the decompressed data
+            newfilepath = '{}/{}_{}.tif'.format(save_dir, prefix, pair_id)  # assuming the filepath ends with .bz2
+            open(newfilepath, 'wb').write(data)  # write a uncompressed file
+        if pair_idx % 50 == 0:
+            print('Just finished processing pair {} of {}'.format(pair_idx, num_pairs))
+
 if __name__ == '__main__':
     dirs = [GRAY_FERET_CD1_DIR, GRAY_FERET_CD2_DIR]
     result = find_img_pairs(dirs, FRONTAL_POSE, PROFILE_RIGHT)
-    print(len(result))
-    print(result[-1])
+    unzip_and_save_files(result, SAVE_DIR, FRONTAL_POSE, PROFILE_RIGHT)

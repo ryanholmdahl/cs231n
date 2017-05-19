@@ -38,12 +38,19 @@ class Dataset:
             file_dict[name][dataset_type] = im_in
         examples_list = [self.train_examples, self.dev_examples, self.test_examples]
         assignments = np.random.choice([0, 1, 2], size=len(file_dict), p=self.split)
+        kept = 0
+        removed = 0
         for name, i in zip(file_dict, assignments):
+            print(name)
             x_im = self.front_cropper.get_crop(file_dict[name]["x"])
             y_im = self.profile_cropper.get_crop(file_dict[name]["y"])
             if self.valid_ims(x_im, y_im):
                 examples_list[i][0].append(self.resize(x_im))
                 examples_list[i][1].append(self.resize(y_im))
+                kept += 1
+            else:
+                removed += 1
+        print(kept / (kept+removed))
         for example_list in examples_list:
             example_list[0] = np.array(example_list[0])
             example_list[1] = np.array(example_list[1])
@@ -51,10 +58,11 @@ class Dataset:
 
     def resize(self, im):
         new_im = imresize(im, self.dims)
-        print(new_im.shape, im.shape)
         return new_im
 
     def valid_ims(self, x_im, y_im):
+        if x_im is None or y_im is None:
+            return False
         widths = [x_im.shape[0], y_im.shape[0]]
         if min(widths) * 1.0 / max(widths) < 0.5:
             return False

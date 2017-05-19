@@ -15,6 +15,6 @@ toy_pairs
 .DS_Store
 /data/sd18
 /data/colorferet
-*zip
+*.zip
 *.tif
-
+*.png

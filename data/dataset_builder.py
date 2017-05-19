@@ -7,6 +7,7 @@ from os.path import isfile, join
 from util import path_leaf
 import numpy as np
 import os
+from face_utils import Cropper
 
 
 class Dataset:
@@ -17,6 +18,10 @@ class Dataset:
         self.dims = dims
         self.split = split
         self.init = False
+        self.front_cropper = Cropper(
+            'C:\Program Files\OpenCV\opencv\sources\data\lbpcascades\lbpcascade_frontalface.xml')
+        self.profile_cropper = Cropper(
+            'C:\Program Files\OpenCV\opencv\sources\data\lbpcascades\lbpcascade_profileface.xml', True)
 
     def read_pairs(self, data_path):
         if self.init:
@@ -24,7 +29,7 @@ class Dataset:
         dir_files = [join(data_path, f) for f in listdir(data_path) if isfile(join(data_path, f))]
         file_dict = {}
         for file in dir_files:
-            im_in = imread(file, flatten=True)
+            im_in = imread(file)
 
             filename = path_leaf(file)
             dataset_type = (filename.split("_")[1]).split(".")[0]
@@ -36,8 +41,9 @@ class Dataset:
         examples_list = [self.train_examples, self.dev_examples, self.test_examples]
         assignments = np.random.choice([0, 1, 2], size=len(file_dict), p=self.split)
         for name, i in zip(file_dict, assignments):
-            x_im = file_dict[name]["x"]
-            y_im = file_dict[name]["y"]
+            print(file_dict[name]["x"].shape)
+            x_im = self.front_cropper.get_crop(file_dict[name]["x"])
+            y_im = self.profile_cropper.get_crop(file_dict[name]["y"])
             examples_list[i][0].append(x_im)
             examples_list[i][1].append(y_im)
         for example_list in examples_list:

@@ -21,3 +21,4 @@ class Cropper:
                 retval = gray[y:y+h, x:x+w]
                 max_w = w
         return retval
+

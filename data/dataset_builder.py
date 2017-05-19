@@ -29,27 +29,36 @@ class Dataset:
         dir_files = [join(data_path, f) for f in listdir(data_path) if isfile(join(data_path, f))]
         file_dict = {}
         for file in dir_files:
-            im_in = imread(file)
-
+            im_in = imread(file, mode="L")
             filename = path_leaf(file)
             dataset_type = (filename.split("_")[1]).split(".")[0]
             name = filename.split("_")[0]
-            print(filename, dataset_type, name)
             if name not in file_dict:
                 file_dict[name] = {}
             file_dict[name][dataset_type] = im_in
         examples_list = [self.train_examples, self.dev_examples, self.test_examples]
         assignments = np.random.choice([0, 1, 2], size=len(file_dict), p=self.split)
         for name, i in zip(file_dict, assignments):
-            print(file_dict[name]["x"].shape)
             x_im = self.front_cropper.get_crop(file_dict[name]["x"])
             y_im = self.profile_cropper.get_crop(file_dict[name]["y"])
-            examples_list[i][0].append(x_im)
-            examples_list[i][1].append(y_im)
+            if self.valid_ims(x_im, y_im):
+                examples_list[i][0].append(self.resize(x_im))
+                examples_list[i][1].append(self.resize(y_im))
         for example_list in examples_list:
             example_list[0] = np.array(example_list[0])
             example_list[1] = np.array(example_list[1])
         self.init = True
+
+    def resize(self, im):
+        new_im = imresize(im, self.dims)
+        print(new_im.shape, im.shape)
+        return new_im
+
+    def valid_ims(self, x_im, y_im):
+        widths = [x_im.shape[0], y_im.shape[0]]
+        if min(widths) * 1.0 / max(widths) < 0.5:
+            return False
+        return True
 
     def save_sets(self, out_path):
         if not self.init:

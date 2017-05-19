@@ -16,6 +16,7 @@ from matplotlib import pyplot as plt
 from matplotlib import image as mpimg
 import ntpath
 
+
 def vectorize_stances(stances):
     v_stances = []
     for row in stances:

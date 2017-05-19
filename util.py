@@ -15,15 +15,6 @@ matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib import image as mpimg
 
-
-def vectorize_stances(stances):
-    v_stances = []
-    for row in stances:
-        s = np.where(row == 1.0)
-        v_stances.append(s[0].tolist()[0])
-    return v_stances
-
-
 def show_image_example(sess, model, input_sample, output_sample):
     figure = plt.figure()
     a = figure.add_subplot(1, 3, 1)

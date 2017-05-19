@@ -1,35 +1,34 @@
 import tensorflow as tf
 import numpy as np
 from util import show_image_example
-from baseline_models import Conv2ConvModel, Affine2AffineModel
+from model_builder import ModularModel
 import pickle
 
 params = {}
 params['lr'] = 1e-3
-params['lr_decay'] = .96
-params['lr_decay_steps'] = 40
-params['im_width'] = 16
-params['im_height'] = 16
+params['lr_decay'] = 0.96
+params['lr_decay_steps'] = 100
+params['im_width'] = 32
+params['im_height'] = 32
 params['im_channels'] = 3
 params['in_conv_layers'] = 1
-params['in_conv_filters'] = [1]
+params['in_conv_filters'] = [10]
 params['in_conv_dim'] = [5]
 params['in_conv_stride'] = [2]
 params['fc_layers'] = 2
 params['fc_dim'] = [256, 256]
 params['embed_channels'] = 100
 params['out_conv_layers'] = 2
-params['out_conv_filters'] = [8, 16]
+params['out_conv_filters'] = [8, 3]
 params['out_conv_dim'] = [5, 5]
 params['out_conv_stride'] = [1, 1]
-params['output_conv_dim'] = 5
-params['output_conv_stride'] = 1
 params["model_name"] = "test"
 params["ckpt_path"] = "ckpt"
 params["log_path"] = "log"
-params["n_epochs"] = 10000
-params["n_eval_batches"] = 10
-params["batch_size"] = 4
+params["n_epochs"] = 10
+params["n_eval_batches"] = 1
+params["batch_size"] = 1
+params["use_transpose"] = False
 
 class TestGenerator:
     def __init__(self, w, h, c, b):
@@ -55,11 +54,18 @@ train_tuples, valid_tuples, test_tuples = pickle.load(open("data/data (1).p", "r
 train_examples = [np.array([np.array(tup[0]) for tup in train_tuples]), np.array([np.array(tup[1]) for tup in train_tuples])]
 valid_examples = [np.array([np.array(tup[0]) for tup in valid_tuples]), np.array([np.array(tup[1]) for tup in valid_tuples])]
 
+train_examples = [np.array([np.zeros((32,32,3)) for _ in range(10)]), np.array([np.zeros((32,32,3)) for _ in range(10)])]
+valid_examples = train_examples
 
-m = Affine2AffineModel(params)
+m = ModularModel(params)
 m.build()
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
     m.fit(sess, None, train_examples, valid_examples)
-    show_image_example(sess, m, train_tuples[0][0], train_tuples[0][1])
+    # saver = tf.train.Saver()
+    # saver.save(sess, "ckpt/overfit")
+    # for i in range(len(train_tuples)):
+    #     show_image_example(sess, m, train_tuples[i][0], train_tuples[i][1], "figs/figt{}.png".format(i))
+    # for i in range(len(valid_tuples)):
+    #     show_image_example(sess, m, valid_tuples[i][0], valid_tuples[i][1], "figs/figv{}.png".format(i))
 

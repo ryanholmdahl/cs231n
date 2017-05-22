@@ -10,6 +10,7 @@ class ModularModel(Model):
         self.image_in = tf.placeholder(tf.float32, shape=input_dims)
         self.truth_in = tf.placeholder(tf.float32, input_dims)
         self.global_step = tf.Variable(0, trainable=False)
+        self.is_train = tf.placeholder(tf.bool, shape=())
 
     def add_in_convolution(self, prev_output):
         for i in range(self.config.in_conv_layers):
@@ -66,6 +67,7 @@ class ModularModel(Model):
         prev_output = tf.layers.dense(prev_output,
                                       self.config.im_height * self.config.im_width * self.config.im_channels,
                                       kernel_initializer=tf.contrib.layers.xavier_initializer(), name='fc_out')
+        prev_output = tf.layers.dropout(prev_output, rate=self.config.fc_dropout, training=self.is_train)
         return tf.reshape(prev_output, (-1, self.config.im_height, self.config.im_width, self.config.im_channels))
 
     def add_prediction_op(self):
@@ -92,4 +94,7 @@ class ModularModel(Model):
         feed_dict = {self.image_in: inputs_batch}
         if outputs_batch is not None:
             feed_dict[self.truth_in] = outputs_batch
+            feed_dict[self.is_train] = True
+        else:
+            feed_dict[self.is_train] = False
         return feed_dict

@@ -94,6 +94,9 @@ class Dataset:
             for child_dir in child_dirs:
                 x_im = imread(os.path.join(dirname, child_dir, "x.png"), flatten=True)
                 y_im = imread(os.path.join(dirname, child_dir, "y.png"), flatten=True)
-                example_list[0].append(x_im)
-                example_list[1].append(y_im)
+                example_list[0].append(np.expand_dims(x_im, 2))
+                example_list[1].append(np.expand_dims(y_im, 2))
+        for example_list in [self.train_examples, self.dev_examples, self.test_examples]:
+            example_list[0] = np.array(example_list[0])
+            example_list[1] = np.array(example_list[1])
         self.init = True

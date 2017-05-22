@@ -33,14 +33,14 @@ def path_leaf(path):
 def show_image_example(sess, model, input_sample, output_sample, name=None):
     figure = plt.figure()
     a = figure.add_subplot(1, 3, 1)
-    imgplot = plt.imshow(input_sample)
+    imgplot = plt.imshow(np.squeeze(input_sample))
     a.set_title("Input")
     a = figure.add_subplot(1, 3, 2)
     model_output = model.predict_on_batch(sess, np.expand_dims(input_sample, axis=0))
-    imgplot = plt.imshow(np.squeeze(model_output, axis=0))
+    imgplot = plt.imshow(np.squeeze(model_output))
     a.set_title("Output")
     a = figure.add_subplot(1, 3, 3)
-    imgplot = plt.imshow(output_sample)
+    imgplot = plt.imshow(np.squeeze(output_sample))
     a.set_title("Truth")
     if name is None:
         figure.savefig('fig.png')

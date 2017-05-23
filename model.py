@@ -183,8 +183,13 @@ class Model(object):
                     print("New best dev! Saving model in {}".format(save_path))
                     saver.save(sess, save_path)
 
+    def restore_from_checkpoint(self, sess, saver):
+        save_path = os.path.join(self.config.ckpt_path, self.config.model_name)
+        saver.restore(sess, save_path)
+
     def build(self):
         self.add_placeholders()
         self.pred = self.add_prediction_op()
         self.loss = self.add_loss_op(self.pred)
         self.train_op = self.add_training_op(self.loss)
+

@@ -10,6 +10,7 @@ Ryan Holmdahl <ryanlh@stanford.edu>
 import tensorflow as tf
 from layers import unpool
 from model import Model
+from util import show_image_example
 
 
 class ModularModel(Model):
@@ -68,7 +69,7 @@ class ModularModel(Model):
     def add_out_unconvolution(self, prev_output):
         for i in range(self.config.out_conv_layers):
             layer_name = 'outconv.{}'.format(i)
-            if self.config.model_name == '':
+            if self.config.model_name != '':
                 layer_name = '{}.{}'.format(self.config.model_name, layer_name)
             prev_unpooled = unpool(prev_output, self.config.out_conv_stride[i])
             prev_output = tf.layers.conv2d(prev_unpooled, self.config.out_conv_filters[i],
@@ -82,8 +83,14 @@ class ModularModel(Model):
         batch_size = prev_dyn_shape[0]
         prev_shape = prev_output.get_shape().as_list()
         for i in range(self.config.out_conv_layers):
+            try:
+                activation_func = self.config.out_conv_activation_func[i]
+            except AttributeError:
+                activation_func = tf.nn.relu
+            if i > 0:
+                prev_output = activation_func(prev_output)
             filter_name = 'deconvW.{}'.format(i)
-            if self.config.model_name == '':
+            if self.config.model_name != '':
                 filter_name = '{}.{}'.format(self.config.model_name, filter_name)
             in_filters = self.config.out_conv_filters[i - 1] if i > 0 else prev_output.get_shape()[3]
             W = tf.get_variable(filter_name, shape=(
@@ -91,22 +98,17 @@ class ModularModel(Model):
                                 initializer=tf.contrib.layers.xavier_initializer_conv2d())
             out_shape = tf.stack([batch_size, prev_shape[1] * self.config.out_conv_stride[i],
                          prev_shape[2] * self.config.out_conv_stride[i], self.config.out_conv_filters[i]])
-            prev_shape = (None, prev_shape[1] * self.config.out_conv_stride[i],
-                         prev_shape[2] * self.config.out_conv_stride[i], self.config.out_conv_filters[i])
+            prev_shape = [None, prev_shape[1] * self.config.out_conv_stride[i],
+                         prev_shape[2] * self.config.out_conv_stride[i], self.config.out_conv_filters[i]]
             prev_output = tf.nn.conv2d_transpose(prev_output, W, out_shape,
                                                  [1, self.config.out_conv_stride[i], self.config.out_conv_stride[i], 1],
                                                  padding='SAME')
-            try:
-                activation_func = self.config.out_conv_activation_func[i]
-            except AttributeError:
-                activation_func = tf.nn.relu
-            prev_output = activation_func(prev_output)
-
-        return tf.reshape(prev_output, [-1, self.config.im_width * self.config.im_height])
+        return prev_output
+        # return tf.reshape(prev_output, [-1, self.config.im_width * self.config.im_height])
 
     def add_out_fc(self, prev_output):
         layer_name = 'fc_out'
-        if self.config.model_name == '':
+        if self.config.model_name != '':
             layer_name = '{}.{}'.format(self.config.model_name, layer_name)
         prev_output = tf.layers.dense(prev_output,
                                       self.config.im_height * self.config.im_width * self.config.im_channels,
@@ -142,3 +144,9 @@ class ModularModel(Model):
         else:
             feed_dict[self.is_train] = False
         return feed_dict
+
+    def demo(self, sess, train_data, dev_data, demo_count):
+        for i in range(demo_count):
+            show_image_example(sess, self, train_data[0][i], train_data[1][i], name='train/fig_{}.png'.format(i))
+            show_image_example(sess, self, dev_data[0][i], dev_data[1][i], name='dev/fig_{}.png'.format(i))
+

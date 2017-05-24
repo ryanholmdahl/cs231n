@@ -93,6 +93,18 @@ class Model(object):
 
         raise NotImplementedError("Each Model must re-implement this method.")
 
+    def demo(self, sess, train_data, dev_data, demo_count):
+        """Demonstrates the current model.
+
+        Args:
+            sess: Current session.
+            train_data: training data to demo.
+            dev_data: development data to demo.
+            demo_count: Number of demo samples.
+        """
+
+        raise NotImplementedError("Each Model must re-implement this method.")
+
     def train_on_batch(self, sess, inputs_batch, outputs_batch, get_loss=False):
         """Perform one step of gradient descent on the provided batch of data.
 

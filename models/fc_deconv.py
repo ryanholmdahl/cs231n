@@ -25,7 +25,7 @@ params['out_conv_stride'] = [2, 2, 2]
 params["model_name"] = "fc_deconv"
 params["ckpt_path"] = "../ckpt"
 params["log_path"] = "../log"
-params["n_epochs"] = 100
+params["n_epochs"] = 2
 params["n_eval_batches"] = 10
 params["batch_size"] = 32
 params["fc_dropout"] = 0.5
@@ -41,7 +41,5 @@ with tf.Session() as sess:
     saver = tf.train.Saver()
     m.fit(sess, saver, dataset.train_examples, dataset.dev_examples)
     m.restore_from_checkpoint(sess, saver)
-    for i in range(10):
-        show_image_example(sess, m, dataset.train_examples[0][i], dataset.train_examples[1][i], name='train/fig_{}.png'.format(i))
-        show_image_example(sess, m, dataset.dev_examples[0][i], dataset.dev_examples[1][i], name='dev/fig_{}.png'.format(i))
+    m.demo(sess, dataset.train_examples, dataset.dev_examples, 10)
 

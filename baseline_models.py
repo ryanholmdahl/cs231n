@@ -1,5 +1,14 @@
-import tensorflow as tf
+#!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
+"""
+CS 231N 2016-2017
+baseline_models.py: Baseline Models
+Sahil Chopra <schopra8@cs.stanford.edu>
+Ryan Holmdahl <ryanlh@stanford.edu>
+"""
 
+
+import tensorflow as tf
 from layers import unpool
 from model import Model
 

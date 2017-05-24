@@ -1,3 +1,12 @@
+#!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
+"""
+CS 231N 2016-2017
+fc_baseline.py: FC Baseline
+Sahil Chopra <schopra8@cs.stanford.edu>
+Ryan Holmdahl <ryanlh@stanford.edu>
+"""
+
 import tensorflow as tf
 import numpy as np
 from util import show_image_example

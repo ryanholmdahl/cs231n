@@ -1,3 +1,13 @@
+#!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
+"""
+CS 231N 2016-2017
+layers.py: Additional Layers
+Sahil Chopra <schopra8@cs.stanford.edu>
+Ryan Holmdahl <ryanlh@stanford.edu>
+"""
+
+
 import tensorflow as tf
 
 def unpool(value, factor, name='unpool'):

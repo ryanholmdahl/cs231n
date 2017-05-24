@@ -157,7 +157,7 @@ class Model(object):
             losses.append(loss)
         return np.mean(losses)
 
-    def run_epoch(self, sess, train_examples, dev_set):
+    def run_epoch(self, sess, train_examples, dev_set, logfile=None):
         prog = Progbar(target=1 + train_examples[0].shape[0] / self.config.batch_size)
         for i, (inputs_batch, outputs_batch) in enumerate(minibatches(train_examples, self.config.batch_size)):
             loss = self.train_on_batch(sess, inputs_batch, outputs_batch, get_loss=True)
@@ -169,19 +169,22 @@ class Model(object):
         print("Evaluating on dev set...")
         dev_loss = self.eval_batches(sess, dev_set, self.config.n_eval_batches)
         print("Dev Loss: {0:.6f}".format(dev_loss))
+        logfile.write(",{0:.5f},{1:.5f}\n".format(float(train_loss), float(dev_loss)))
         return dev_loss
 
     def fit(self, sess, saver, train_examples, dev_set):
-        best_dev_loss = float('inf')
-        for epoch in range(self.config.n_epochs):
-            print("Epoch {:} out of {:}".format(epoch + 1, self.config.n_epochs))
-            dev_loss = self.run_epoch(sess, train_examples, dev_set)
-            if dev_loss < best_dev_loss:
-                best_dev_loss = dev_loss
-                if saver:
-                    save_path = os.path.join(self.config.ckpt_path, self.config.model_name)
-                    print("New best dev! Saving model in {}".format(save_path))
-                    saver.save(sess, save_path)
+        with open(os.path.join(self.config.log_path, self.config.model_name), "w") as logfile:
+            best_dev_loss = float('inf')
+            for epoch in range(self.config.n_epochs):
+                print("Epoch {:} out of {:}".format(epoch + 1, self.config.n_epochs))
+                logfile.write(str(epoch+1))
+                dev_loss = self.run_epoch(sess, train_examples, dev_set, logfile)
+                if dev_loss < best_dev_loss:
+                    best_dev_loss = dev_loss
+                    if saver:
+                        save_path = os.path.join(self.config.ckpt_path, self.config.model_name)
+                        print("New best dev! Saving model in {}".format(save_path))
+                        saver.save(sess, save_path)
 
     def restore_from_checkpoint(self, sess, saver):
         save_path = os.path.join(self.config.ckpt_path, self.config.model_name)

@@ -1,12 +1,3 @@
-#!/usr/bin/env python2.7
-# -*- coding: utf-8 -*-
-"""
-CS 231N 2016-2017
-fc_baseline.py: FC Baseline
-Sahil Chopra <schopra8@cs.stanford.edu>
-Ryan Holmdahl <ryanlh@stanford.edu>
-"""
-
 import tensorflow as tf
 import numpy as np
 from util import show_image_example
@@ -24,17 +15,17 @@ params['in_conv_layers'] = 0
 params['in_conv_filters'] = [10]
 params['in_conv_dim'] = [5]
 params['in_conv_stride'] = [2]
-params['fc_layers'] = 6
-params['fc_dim'] = [1024, 1024, 1024, 1024, 1024, 1024]
-params['embed_channels'] = 100
-params['out_conv_layers'] = 0
-params['out_conv_filters'] = [8, 3]
-params['out_conv_dim'] = [5, 5]
-params['out_conv_stride'] = [1, 1]
-params["model_name"] = "fc_baseline"
+params['fc_layers'] = 2
+params['fc_dim'] = [1024, 1024]
+params['embed_channels'] = 256
+params['out_conv_layers'] = 3
+params['out_conv_filters'] = [256, 92, 1]
+params['out_conv_dim'] = [5, 5, 5]
+params['out_conv_stride'] = [2, 2, 2]
+params["model_name"] = "fc_unconv"
 params["ckpt_path"] = "../ckpt"
 params["log_path"] = "../log"
-params["n_epochs"] = 1000
+params["n_epochs"] = 50
 params["n_eval_batches"] = 10
 params["batch_size"] = 32
 params["fc_dropout"] = 0

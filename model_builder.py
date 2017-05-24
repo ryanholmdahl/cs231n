@@ -78,6 +78,9 @@ class ModularModel(Model):
         return prev_output
 
     def add_out_deconvolution(self, prev_output):
+        prev_dyn_shape = tf.shape(prev_output)
+        batch_size = prev_dyn_shape[0]
+        prev_shape = prev_output.get_shape().as_list()
         for i in range(self.config.out_conv_layers):
             filter_name = 'deconvW.{}'.format(i)
             if self.config.model_name == '':
@@ -86,8 +89,9 @@ class ModularModel(Model):
             W = tf.get_variable(filter_name, shape=(
                 self.config.out_conv_dim[i], self.config.out_conv_dim[i], self.config.out_conv_filters[i], in_filters),
                                 initializer=tf.contrib.layers.xavier_initializer_conv2d())
-            prev_shape = prev_output.get_shape().as_list()
-            out_shape = (self.config.batch_size, prev_shape[1] * self.config.out_conv_stride[i],
+            out_shape = tf.stack([batch_size, prev_shape[1] * self.config.out_conv_stride[i],
+                         prev_shape[2] * self.config.out_conv_stride[i], self.config.out_conv_filters[i]])
+            prev_shape = (None, prev_shape[1] * self.config.out_conv_stride[i],
                          prev_shape[2] * self.config.out_conv_stride[i], self.config.out_conv_filters[i])
             prev_output = tf.nn.conv2d_transpose(prev_output, W, out_shape,
                                                  [1, self.config.out_conv_stride[i], self.config.out_conv_stride[i], 1],

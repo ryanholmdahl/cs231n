@@ -8,9 +8,12 @@ Ryan Holmdahl <ryanlh@stanford.edu>
 """
 
 import tensorflow as tf
+import numpy as np
+import os
 
 from model_builder import ModularModel
 from utils.activation_funcs import leaky_relu
+from utils.util import minibatches, Progbar
 
 
 class DC_WGAN():
@@ -19,8 +22,135 @@ class DC_WGAN():
     def __init__(self,):
         """ Initialize the DC_WGAN.
         """
-        generator = Generator(params={})
-        # discriminator = Discriminator(params={})
+        params = {}
+        # Learning Parameters
+        params['lr'] = 5e-5
+        params['lr_decay'] = 0.98
+        params['lr_decay_steps'] = 100
+        params["n_eval_batches"] = 10
+        params["batch_size"] = 32
+        params["beta1"] = 0.5
+        params["beta2"] = 0.9
+
+        # Input Image Parameters
+        params['im_width'] = 32
+        params['im_height'] = 32
+        params['im_channels'] = 1
+
+        # Logging Params
+        params["ckpt_path"] = "../ckpt"
+        params["log_path"] = "../log"
+
+        # Create Two Neural Networks
+        self.generator = Generator(params=params)
+        self.discriminator = Discriminator(params=params)
+
+        self.generator_epochs = 200000
+        self.discr_epochs = 5
+
+    def train_on_batch(self, sess, inputs_batch, outputs_batch, get_loss=False):
+        """Perform one step of gradient descent on the provided batch of data.
+
+        Args:
+            sess: tf.Session()
+            inputs_batch: batch of image inputs
+            outputs_batch: batch of output (rotated) images
+            get_loss: whether to calculate the batch loss
+        Returns:
+            loss: loss over the batch (a scalar) or zero if not requested
+        """
+        feed = self.create_feed_dict(inputs_batch, outputs_batch)
+        if get_loss:
+            _, loss = sess.run([self.train_op, self.loss], feed_dict=feed)
+            return loss
+        else:
+            sess.run(self.train_op, feed_dict=feed)
+            return 0
+
+    def predict_on_batch(self, sess, inputs_batch):
+        """Make predictions for the provided batch of data
+
+        Args:
+            sess: tf.Session()
+            inputs_batch
+        Returns:
+            predictions: np.ndarray of shape (n_samples, img_width, img_height, img_channels)
+        """
+        feed = self.create_feed_dict(inputs_batch)
+        preds = sess.run(self.pred, feed_dict=feed)
+        return preds
+
+    def eval_on_batch(self, sess, inputs_batch, outputs_batch):
+        """Evaluate the loss on a given batch
+
+        Args:
+            sess: tf.Session()
+            inputs_batch
+            outputs_batch
+        Returns:
+            loss: loss over the batch (a scalar)
+        """
+        feed = self.create_feed_dict(inputs_batch, outputs_batch)
+        loss = sess.run(self.loss, feed_dict=feed)
+        return loss
+
+    def eval_batches(self, sess, eval_set, num_batches):
+        """Evaluate the loss on a number of given minibatches of a dataset.
+
+        Args:
+            sess: tf.Session()
+            eval_set: full dataset, as passed to run_epoch
+            num_batches: number of batches to evaluate
+        Returns:
+            loss: loss over the batches (a scalar)
+        """
+        losses = []
+        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(eval_set, self.config.batch_size)):
+            if i >= num_batches:
+                break
+            loss = self.eval_on_batch(sess, inputs_batch, outputs_batch)
+            losses.append(loss)
+        return np.mean(losses)
+
+    def run_epoch(self, sess, train_examples, dev_set, logfile=None):
+        prog = Progbar(target=1 + train_examples[0].shape[0] / self.config.batch_size)
+        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(train_examples, self.config.batch_size)):
+            loss = self.train_on_batch(sess, inputs_batch, outputs_batch, get_loss=True)
+            prog.update(i + 1, [("train loss", loss)])
+        print("")
+        print("Evaluating on train set...")
+        train_loss = self.eval_batches(sess, train_examples, self.config.n_eval_batches)
+        print("Train Loss: {0:.6f}".format(train_loss))
+        print("Evaluating on dev set...")
+        dev_loss = self.eval_batches(sess, dev_set, self.config.n_eval_batches)
+        print("Dev Loss: {0:.6f}".format(dev_loss))
+        logfile.write(",{0:.5f},{1:.5f}\n".format(float(train_loss), float(dev_loss)))
+        return dev_loss
+
+    def fit(self, sess, saver, train_examples, dev_set):
+        with open(os.path.join(self.params['ckpt_path'], self.params['model_name']), "w") as logfile:
+            best_gen_dev_loss = float('inf')
+            best_discr_dev_loss = float('inf')
+            for gen_epoch in range(self.generator_epochs):
+                print("Generator Epoch {:} out of {:}".format(gen_epoch + 1, self.generator_epochs))
+                logfile.write(str(gen_epoch+1))
+                if gen_epoch > 0:
+                    gen_dev_loss = self.generator.run_epoch(sess, train_examples, dev_set, logfile=logfile)
+                    if gen_dev_loss < best_gen_dev_loss:
+                        best_gen_dev_loss = gen_dev_loss
+                        save_path = os.path.join(self.params['ckpt_path'], self.generator.model_name)
+                        print("New best dev for generator! Saving model in {}".format(save_path))
+                        saver.save(sess, save_path)
+                for discr_epoch in range(self.discr_epochs):
+                    print("Gen Epoch {} - Discriminator Epoch {:} out of {:}".format(gen_epoch + 1,
+                                                                                     discr_epoch + 1,
+                                                                                     self.discr_epochs))
+                    discr_dev_loss = self.discriminator.run_epoch(sess, train_examples, dev_set, logfile=logfile)
+                    if discr_dev_loss < best_discr_dev_loss:
+                        best_discr_dev_loss = discr_dev_loss
+                        save_path = os.path.join(self.params['ckpt_path'], self.discriminator.model_name)
+                        print("New best dev for discriminator! Saving model in {}".format(save_path))
+                        saver.save(sess, save_path)
 
 class Generator(ModularModel):
     """
@@ -39,24 +169,11 @@ class Generator(ModularModel):
     """
 
     def __init__(self, params):
-        # Learning Parameters
-        params['lr'] = 5e-5
-        params['lr_decay'] = 0.98
-        params['lr_decay_steps'] = 100
-        params["n_epochs"] = 10
-        params["n_eval_batches"] = 10
-        params["batch_size"] = 32
-        params["beta1"] = 0.5
-        params["beta2"] = 0.9
+
         params["gans_reconstruction_lambda"] = 0.8
 
         # Regularization
         params["fc_dropout"] = 0
-
-        # Input Image Parameters
-        params['im_width'] = 32
-        params['im_height'] = 32
-        params['im_channels'] = 1
 
         # Input Convolution Layers
         params['in_conv_layers'] = 0
@@ -84,8 +201,6 @@ class Generator(ModularModel):
 
         # Model Info Params
         params["model_name"] = "generator"
-        params["ckpt_path"] = "../ckpt"
-        params["log_path"] = "../log"
 
         # Initialize the Model
         super().__init__(params)
@@ -122,6 +237,23 @@ class Generator(ModularModel):
                                      generated_imgs=self.real_imgs_preds)
         self.train_op = self.add_training_op(self.loss)
 
+    def train_on_batch(self, sess, inputs_batch, outputs_batch, get_loss=False):
+        pass
+
+    def predict_on_batch(self, sess, inputs_batch):
+        pass
+
+    def eval_on_batch(self, sess, inputs_batch, outputs_batch):
+        pass
+
+    def eval_batches(self, sess, eval_set, num_batches):
+        pass
+
+    def run_epoch(self, sess, train_examples, dev_set, logfile=None):
+        pass
+
+    def fit(self, sess, saver, train_examples, dev_set):
+        pass
 
 class Discriminator(ModularModel):
     """
@@ -138,23 +270,10 @@ class Discriminator(ModularModel):
 
     def __init__(self, params):
         # Learning Parameters
-        params['lr'] = 5e-5
-        params['lr_decay'] = 0.98
-        params['lr_decay_steps'] = 100
-        params["n_epochs"] = 10
-        params["n_eval_batches"] = 10
-        params["batch_size"] = 32
         params["lambda_cost"] = 10
-        params["beta1"] = 0.5
-        params["beta2"] = 0.9
 
         # Regularization
         params["fc_dropout"] = 0
-
-        # Input Image Parameters
-        params['im_width'] = 32
-        params['im_height'] = 32
-        params['im_channels'] = 1
 
         # Input Convolution Layers
         params['dim'] = 64
@@ -166,8 +285,6 @@ class Discriminator(ModularModel):
 
         # Model Info Params
         params["model_name"] = "generator"
-        params["ckpt_path"] = "../ckpt"
-        params["log_path"] = "../log"
 
         # Initialize the Model
         super().__init__(params)
@@ -224,6 +341,24 @@ class Discriminator(ModularModel):
         self.fake_imgs_preds = self.add_prediction_op(self.fake_imgs, data_type='fake_imgs')
         self.loss = self.add_loss_op()
         self.train_op = self.add_training_op(self.loss)
+
+    def train_on_batch(self, sess, inputs_batch, outputs_batch, get_loss=False):
+        pass
+
+    def predict_on_batch(self, sess, inputs_batch):
+        pass
+
+    def eval_on_batch(self, sess, inputs_batch, outputs_batch):
+        pass
+
+    def eval_batches(self, sess, eval_set, num_batches):
+        pass
+
+    def run_epoch(self, sess, train_examples, dev_set, logfile=None):
+        pass
+
+    def fit(self, sess, saver, train_examples, dev_set):
+        pass
 
 if __name__ == '__main__':
     dc_wgan = DC_WGAN()

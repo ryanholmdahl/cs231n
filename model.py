@@ -8,9 +8,7 @@ Ryan Holmdahl <ryanlh@stanford.edu>
 """
 
 import os
-
 import numpy as np
-
 from utils.util import minibatches, Progbar
 
 
@@ -208,4 +206,3 @@ class Model(object):
         self.pred = self.add_prediction_op()
         self.loss = self.add_loss_op(preds=self.pred)
         self.train_op = self.add_training_op(self.loss)
-

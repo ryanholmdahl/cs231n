@@ -41,7 +41,7 @@ class Model(object):
         """
         raise NotImplementedError("Each Model must re-implement this method.")
 
-    def create_feed_dict(self, inputs_batch, outputs_batch=None):
+    def create_feed_dict(self, inputs_batch, outputs_batch=None, **kwargs):
         """Creates the feed_dict for one step of training.
 
         A feed_dict takes the form of:
@@ -60,7 +60,7 @@ class Model(object):
         """
         raise NotImplementedError("Each Model must re-implement this method.")
 
-    def add_prediction_op(self):
+    def add_prediction_op(self, input_logits=None, **kwargs):
         """Implements the core of the model that transforms a batch of input data into predictions.
 
         Returns:
@@ -68,7 +68,7 @@ class Model(object):
         """
         raise NotImplementedError("Each Model must re-implement this method.")
 
-    def add_loss_op(self, final_layer):
+    def add_loss_op(self, **kwargs):
         """Adds Ops for the loss function to the computational graph.
 
         Args:
@@ -205,6 +205,6 @@ class Model(object):
     def build(self):
         self.add_placeholders()
         self.pred = self.add_prediction_op()
-        self.loss = self.add_loss_op(self.pred)
+        self.loss = self.add_loss_op(preds=self.pred)
         self.train_op = self.add_training_op(self.loss)
 

@@ -109,9 +109,8 @@ class ModularModel(Model):
                                                  [1, self.config.out_conv_stride[i], self.config.out_conv_stride[i], 1],
                                                  padding='SAME')
         return prev_output
-        # return tf.reshape(prev_output, [-1, self.config.im_width * self.config.im_height])
 
-    def add_out_fc(self, prev_output):
+    def add_out_fc(self, prev_output, ):
         layer_name = 'fc_out'
         if self.config.model_name != '':
             layer_name = '{}.{}'.format(self.config.model_name, layer_name)
@@ -121,8 +120,10 @@ class ModularModel(Model):
         prev_output = tf.layers.dropout(prev_output, rate=self.config.fc_dropout, training=self.is_train)
         return tf.reshape(prev_output, (-1, self.config.im_height, self.config.im_width, self.config.im_channels))
 
-    def add_prediction_op(self):
-        prev_output = self.add_in_convolution(self.image_in)
+    def add_prediction_op(self, input_logits=None, **kwargs):
+        if input_logits is None:
+            input_logits = self.image_in
+        prev_output = self.add_in_convolution(input_logits)
         prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
         if self.config.out_conv_layers > 0:
             prev_output = self.add_fixed_size_embed(prev_output)
@@ -133,15 +134,15 @@ class ModularModel(Model):
         else:
             return self.add_out_fc(prev_output)
 
-    def add_loss_op(self, final_layer):
-        return tf.reduce_mean((final_layer - self.truth_in) ** 2 / 2)
+    def add_loss_op(self, **kwargs):
+        return tf.reduce_mean(kwargs['preds']- kwargs['rotated_imgs']) ** 2 / 2
 
     def add_training_op(self, loss):
         learning_rate = tf.train.exponential_decay(self.config.lr, self.global_step, self.config.lr_decay_steps,
                                                    self.config.lr_decay, staircase=True)
         return tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=self.global_step)
 
-    def create_feed_dict(self, inputs_batch, outputs_batch=None):
+    def create_feed_dict(self, inputs_batch, outputs_batch=None, **kwargs):
         feed_dict = {self.image_in: inputs_batch}
         if outputs_batch is not None:
             feed_dict[self.truth_in] = outputs_batch
@@ -155,3 +156,8 @@ class ModularModel(Model):
             show_image_example(sess, self, train_data[0][i], train_data[1][i], name='train/fig_{}.png'.format(i))
             show_image_example(sess, self, dev_data[0][i], dev_data[1][i], name='dev/fig_{}.png'.format(i))
 
+    def build(self):
+        self.add_placeholders()
+        self.pred = self.add_prediction_op()
+        self.loss = self.add_loss_op(preds=self.pred, rotated_imgs=self.truth_in)
+        self.train_op = self.add_training_op(self.loss)

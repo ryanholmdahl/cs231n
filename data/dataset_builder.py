@@ -1,13 +1,14 @@
-from scipy.misc import imread
-from scipy.misc import imsave
-from scipy.misc import imresize
-
+import os
 from os import listdir
 from os.path import isfile, join
-from util import path_leaf
+
 import numpy as np
-import os
-from face_utils import Cropper
+from scipy.misc import imread
+from scipy.misc import imresize
+from scipy.misc import imsave
+
+from utils.face_utils import Cropper
+from utils.util import path_leaf
 
 
 class Dataset:

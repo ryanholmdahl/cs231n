@@ -7,10 +7,10 @@ Sahil Chopra <schopra8@cs.stanford.edu>
 Ryan Holmdahl <ryanlh@stanford.edu>
 """
 
-
 import tensorflow as tf
-from layers import unpool
+
 from model import Model
+from utils.layers import unpool
 
 
 class Conv2ConvModel(Model):

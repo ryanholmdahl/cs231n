@@ -8,11 +8,9 @@ Ryan Holmdahl <ryanlh@stanford.edu>
 """
 
 import tensorflow as tf
-import numpy as np
-from util import show_image_example
+
 from model_builder import ModularModel
-from activation_funcs import leaky_relu
-from data.dataset_builder import Dataset
+from utils.activation_funcs import leaky_relu
 
 
 class DC_WGAN():

@@ -7,10 +7,11 @@ Sahil Chopra <schopra8@cs.stanford.edu>
 Ryan Holmdahl <ryanlh@stanford.edu>
 """
 
-import numpy as np
-import tensorflow as tf
 import os
-from util import minibatches, Progbar, vectorize_stances
+
+import numpy as np
+
+from utils.util import minibatches, Progbar
 
 
 class Config:

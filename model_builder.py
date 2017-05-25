@@ -8,9 +8,10 @@ Ryan Holmdahl <ryanlh@stanford.edu>
 """
 
 import tensorflow as tf
-from layers import unpool
+
 from model import Model
-from util import show_image_example
+from utils.layers import unpool
+from utils.util import show_image_example
 
 
 class ModularModel(Model):

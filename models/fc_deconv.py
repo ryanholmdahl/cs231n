@@ -1,8 +1,7 @@
 import tensorflow as tf
-import numpy as np
-from util import show_image_example
-from model_builder import ModularModel
+
 from data.dataset_builder import Dataset
+from model_builder import ModularModel
 
 params = {}
 params['lr'] = 1e-3

@@ -1,8 +1,9 @@
-import tensorflow as tf
-import numpy as np
-from util import show_image_example
-from model_builder import ModularModel
 import pickle
+
+import numpy as np
+import tensorflow as tf
+
+from model_builder import ModularModel
 
 params = {}
 params['lr'] = 1e-3

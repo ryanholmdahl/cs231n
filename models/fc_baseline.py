@@ -8,10 +8,9 @@ Ryan Holmdahl <ryanlh@stanford.edu>
 """
 
 import tensorflow as tf
-import numpy as np
-from util import show_image_example
-from model_builder import ModularModel
+
 from data.dataset_builder import Dataset
+from model_builder import ModularModel
 
 params = {}
 params['lr'] = 1e-3
@@ -51,4 +50,3 @@ with tf.Session() as sess:
     m.fit(sess, saver, dataset.train_examples, dataset.dev_examples)
     m.restore_from_checkpoint(sess, saver)
     m.demo(sess, dataset.train_examples, dataset.dev_examples, 10)
-

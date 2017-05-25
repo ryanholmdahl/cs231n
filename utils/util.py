@@ -17,14 +17,6 @@ from matplotlib import image as mpimg
 import ntpath
 
 
-def vectorize_stances(stances):
-    v_stances = []
-    for row in stances:
-        s = np.where(row == 1.0)
-        v_stances.append(s[0].tolist()[0])
-    return v_stances
-
-
 def path_leaf(path):
     head, tail = ntpath.split(path)
     return tail or ntpath.basename(head)

@@ -45,6 +45,11 @@ class ModularModel(Model):
             prev_output = tf.layers.dense(prev_output, self.config.fc_dim[i], activation=activation_func,
                                           kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                           name=layer_name)
+        try:
+            if self.config.normalize_input:
+                prev_output = tf.layers.batch_normalization(prev_output, training=True)
+        except AttributeError:
+            pass
         return prev_output
 
     def add_fixed_size_embed(self, prev_output):

@@ -22,21 +22,22 @@ class ModularModel(Model):
         self.global_step = tf.Variable(0, trainable=False)
         self.is_train = tf.placeholder(tf.bool, shape=())
 
-    def add_in_convolution(self, prev_output):
+    def add_in_convolution(self, prev_output, maxpooling=True):
         for i in range(self.config.in_conv_layers):
-            layer_name = 'inconv.{}'.format()
+            layer_name = 'inconv.{}'.format(i+1)
             if self.config.model_name != '':
                 layer_name = '{}.{}'.format(self.config.model_name, layer_name)
             prev_output = tf.layers.conv2d(prev_output, self.config.in_conv_filters[i], self.config.in_conv_dim[i],
                                            strides=self.config.in_conv_stride[i], activation=tf.nn.relu,
                                            kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
                                            name=layer_name)
-            prev_output = tf.layers.max_pooling2d(prev_output, 2, strides=2)
+            if maxpooling:
+                prev_output = tf.layers.max_pooling2d(prev_output, 2, strides=2)
         return prev_output
 
     def add_in_fc(self, prev_output):
         for i in range(self.config.fc_layers):
-            layer_name = 'fc.{}'.format(i)
+            layer_name = 'fc.{}'.format(i+1)
             if self.config.model_name != '':
                 layer_name = '{}.{}'.format(self.config.model_name, layer_name)
             try:
@@ -74,7 +75,7 @@ class ModularModel(Model):
 
     def add_out_unconvolution(self, prev_output):
         for i in range(self.config.out_conv_layers):
-            layer_name = 'outconv.{}'.format(i)
+            layer_name = 'outconv.{}'.format(i+1)
             if self.config.model_name != '':
                 layer_name = '{}.{}'.format(self.config.model_name, layer_name)
             prev_unpooled = unpool(prev_output, self.config.out_conv_stride[i])
@@ -95,7 +96,7 @@ class ModularModel(Model):
                 activation_func = tf.nn.relu
             if i > 0:
                 prev_output = activation_func(prev_output)
-            filter_name = 'deconvW.{}'.format(i)
+            filter_name = 'deconvW.{}'.format(i + 1)
             if self.config.model_name != '':
                 filter_name = '{}.{}'.format(self.config.model_name, filter_name)
             in_filters = self.config.out_conv_filters[i - 1] if i > 0 else prev_output.get_shape()[3]
@@ -122,21 +123,36 @@ class ModularModel(Model):
         return tf.reshape(prev_output, (-1, self.config.im_height, self.config.im_width, self.config.im_channels))
 
     def add_prediction_op(self, input_logits=None, **kwargs):
-        if input_logits is None:
-            input_logits = self.image_in
-        prev_output = self.add_in_convolution(input_logits)
-        prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
-        if self.config.out_conv_layers > 0:
-            prev_output = self.add_fixed_size_embed(prev_output)
-            if self.config.use_transpose:
-                return self.add_out_deconvolution(prev_output)
-            else:
-                return self.add_out_unconvolution(prev_output)
-        else:
-            return self.add_out_fc(prev_output)
+        with tf.variable_scope(self.config.model_name) as scope:
+            if input_logits is None:
+                input_logits = self.image_in
+            try:
+                prev_output = self.add_in_convolution(input_logits)
+                prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
+                if self.config.out_conv_layers > 0:
+                    prev_output = self.add_fixed_size_embed(prev_output)
+                    if self.config.use_transpose:
+                        result = self.add_out_deconvolution(prev_output)
+                    else:
+                        result = self.add_out_unconvolution(prev_output)
+                else:
+                    result = self.add_out_fc(prev_output)
+            except ValueError:
+                scope.reuse_variables()
+                prev_output = self.add_in_convolution(input_logits)
+                prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
+                if self.config.out_conv_layers > 0:
+                    prev_output = self.add_fixed_size_embed(prev_output)
+                    if self.config.use_transpose:
+                        result = self.add_out_deconvolution(prev_output)
+                    else:
+                        result = self.add_out_unconvolution(prev_output)
+                else:
+                    result = self.add_out_fc(prev_output)
+            return result
 
     def add_loss_op(self, **kwargs):
-        return tf.reduce_mean(kwargs['preds']- kwargs['rotated_imgs']) ** 2 / 2
+        return tf.reduce_mean(kwargs['preds'] - kwargs['rotated_imgs']) ** 2 / 2
 
     def add_training_op(self, loss):
         learning_rate = tf.train.exponential_decay(self.config.lr, self.global_step, self.config.lr_decay_steps,
@@ -154,8 +170,8 @@ class ModularModel(Model):
 
     def demo(self, sess, train_data, dev_data, demo_count):
         for i in range(demo_count):
-            show_image_example(sess, self, train_data[0][i], train_data[1][i], name='train/fig_{}.png'.format(i))
-            show_image_example(sess, self, dev_data[0][i], dev_data[1][i], name='dev/fig_{}.png'.format(i))
+            show_image_example(sess, self, train_data[0][i], train_data[1][i], name='train/fig_{}.png'.format(i+1))
+            show_image_example(sess, self, dev_data[0][i], dev_data[1][i], name='dev/fig_{}.png'.format(i+1))
 
     def build(self):
         self.add_placeholders()

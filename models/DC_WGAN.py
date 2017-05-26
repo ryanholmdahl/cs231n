@@ -91,7 +91,9 @@ class DC_WGAN():
         )
         differences = generated_imgs - real_imgs
         interpolates = real_imgs + (alpha * differences)
-        gradients = tf.gradients(self.generator.add_prediction_op(input_logits=interpolates, data_type='interpolates'),
+        interpolate_imgs = self.generator.add_prediction_op(input_logits=interpolates, data_type='interpolates')
+        interpolate_imgs = tf.reshape(interpolate_imgs, [-1, self.im_height, self.im_width, self.im_channels])
+        gradients = tf.gradients(interpolate_imgs,
                                  [interpolates])[0]
         slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
         gradient_penalty = tf.reduce_mean((slopes - 1.) ** 2)
@@ -102,7 +104,8 @@ class DC_WGAN():
         tf.reset_default_graph()
 
         self.x, self.y, self.global_step = self.add_place_holders()
-        self.gen_images = self.generator.add_prediction_op(preprocess_imgs(self.y))
+        self.gen_images = tf.reshape(self.generator.add_prediction_op(preprocess_imgs(self.y)),
+                                     shape=[-1, self.im_height, self.im_width, self.im_channels])
 
         with tf.variable_scope("") as scope:
             # scale images to be -1 to 1
@@ -156,7 +159,7 @@ class DC_WGAN():
                                                     train_examples, dev_set, self.batch_size, logfile)
                     if discr_dev_loss < best_discr_dev_loss:
                         best_discr_dev_loss = discr_dev_loss
-                        save_path = os.path.join(self.params['ckpt_path'], self.discriminator.config.model_name)
+                        save_path = os.path.join(self.ckpt_path, self.discriminator.config.model_name)
                         print("New best dev for discriminator! Saving model in {}".format(save_path))
                         saver.save(sess, save_path)
 
@@ -249,7 +252,7 @@ class Generator(ModularModel):
     FC Layer (128 Hidden Units) + Leaky ReLU Activation Function)
     Batch Norm
     FC Layer + Leaky ReLU -> N x 4 x 4 x 256
-    Deconv Layer + Leaky ReLU -> N x 8 x 8 x 128 + Leaky
+    Deconv Layer + Leaky ReLU -> N x 8 x 8 x 128
     Deconv Layer + Leaky ReLU -> N x 16 x 16 x 64
     Deconv Layer + Tanh -> N x 32 x 32 x 1
     """
@@ -267,7 +270,7 @@ class Generator(ModularModel):
         params['fc_activation_funcs'] = [tf.nn.relu] * params['fc_layers']
 
         # Normalize Input Vector?
-        params['normalize_input'] = True
+        params['normalize_input'] = False
 
         # Embedding Layer (FC -> Conv Intermediary Layer)
         params['dim'] = 64
@@ -287,10 +290,6 @@ class Generator(ModularModel):
 
         # Initialize the Model
         super().__init__(params)
-
-    def add_prediction_op(self, input_logits=None, **kwargs):
-        with tf.variable_scope(self.config.model_name):
-            return super(ModularModel, self).add_prediction_op(input_logits=input_logits)
 
     def add_placeholders(self):
         pass
@@ -365,9 +364,11 @@ class Discriminator(ModularModel):
 
     def add_prediction_op(self, input_logits=None, **kwargs):
         with tf.variable_scope(self.config.model_name):
-            unsquashed_output = super(ModularModel, self).add_prediction_op(input_logits=input_logits)
-            layer_name = '{}.discriminator_output.{}'.format(self.config.model_name, kwargs['data_type'])
-            preds = tf.layers.dense(unsquashed_output, 1, kernel_initializer=tf.contrib.layers.xavier_initializer(),
+            prev_output = self.add_in_convolution(input_logits, maxpooling=False)
+            layer_name = '{}.discriminator_output'.format(self.config.model_name)
+            flattened_output = tf.reshape(prev_output, [-1, self.config.dim*4])
+            preds = tf.layers.dense(flattened_output, 1,
+                                    kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                     name=layer_name)
             return preds
 
@@ -400,7 +401,8 @@ class Discriminator(ModularModel):
 
 
 def preprocess_imgs(imgs):
-    return imgs
+    processed_imgs = tf.map_fn(lambda img: tf.image.per_image_standardization(img), imgs)
+    return processed_imgs
 
 if __name__ == '__main__':
     dataset = Dataset((32, 32))

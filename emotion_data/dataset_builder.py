@@ -1,12 +1,12 @@
 import os
 import csv
 from os import listdir
-from os.path import isfile, join
-
+from os.path import isfile, join, basename, splitext
 import numpy as np
 from scipy.misc import imread
 from scipy.misc import imresize
 from scipy.misc import imsave
+import glob
 
 
 class Dataset:
@@ -52,24 +52,7 @@ class Dataset:
                 x = example_list[0][i]
                 imsave(os.path.join(dirname, "{}.png".format(i)), x, format="png")
 
-    def read_sets(self, root_path):
-        if self.init:
-            raise Exception("Dataset already initialized.")
-        dirnames = [os.path.join(root_path, dirname) for dirname in ["train", "dev"]]
-        for dirname, example_list in zip(dirnames, [self.train_examples, self.dev_examples]):
-            child_dirs = os.listdir(dirname)
-            print(dirname, child_dirs)
-            for child_dir in child_dirs:
-                x_im = imread(os.path.join(dirname, child_dir, "x.png"), flatten=True)
-                y_im = imread(os.path.join(dirname, child_dir, "y.png"), flatten=True)
-                example_list[0].append(np.expand_dims(x_im, 2))
-                example_list[1].append(np.expand_dims(y_im, 2))
-        for example_list in [self.train_examples, self.dev_examples, self.test_examples]:
-            example_list[0] = np.array(example_list[0])
-            example_list[1] = np.array(example_list[1])
-        self.init = True
-
 if __name__ == '__main__':
     d = Dataset(48)
     d.read_pairs('./fer2013/fer2013.csv')
-    d.save_sets('./fer2013_data_splits')
+    print(len(d.train_examples[0]))

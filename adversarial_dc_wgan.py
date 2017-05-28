@@ -19,6 +19,7 @@ from data.dataset_builder import Dataset
 from scipy.misc import imsave
 from tensorflow.examples.tutorials.mnist import input_data
 
+
 class DC_WGAN():
     """ DCGAN w/ Improved WGAN Loss
     """
@@ -28,7 +29,7 @@ class DC_WGAN():
         """
         # Learning Parameters
         self.generator_epochs = 200000
-        self.discr_epochs = 1
+        self.discr_epochs = 5
         self.gen_lr = 1e-5
         self.di_lr = 1e-5
         self.dg_lr = 1e-5
@@ -49,8 +50,8 @@ class DC_WGAN():
         self.recon_path = "recon_outputs"
 
         # Model Parameters
-        self.im_width = 48
-        self.im_height = 48
+        self.im_width = 28
+        self.im_height = 28
         self.im_channels = 1
         self.style_dim = 10
         self.num_demos = 10
@@ -208,28 +209,33 @@ class DC_WGAN():
             for gen_epoch in range(self.generator_epochs):
                 print("Generator Epoch {:} out of {:}".format(gen_epoch + 1, self.generator_epochs))
                 logfile.write(str(gen_epoch + 1))
-
-                if gen_epoch > 0:
-                    gen_tf_ops = self.g_train_step
-                    gen_dev_loss = self.run_epoch(gen_tf_ops, [(self.reconstruction_loss, "reconstruction"),
-                                                               (self.g_loss, "generator")], sess, train_examples,
-                                                  dev_set, self.batch_size, logfile)
-                    # if gen_dev_loss < best_gen_dev_loss:
-                    #     best_gen_dev_loss = gen_dev_loss
-                    #     save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
-                    #     print("New best dev for generator! Saving model in {}".format(save_path))
-                    #     saver.save(sess, save_path)
-
-                for discr_epoch in range(self.discr_epochs):
-                    print("Gen Epoch {} - Discriminator Epoch {:} out of {:}".format(gen_epoch + 1,
-                                                                                     discr_epoch + 1,
-                                                                                     self.discr_epochs))
-                    discr_tf_ops = [self.dg_train_step]#, self.di_train_step]
-                    discr_dev_loss = self.run_epoch(discr_tf_ops,
-                                                    [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
-                                                    sess,
-                                                    train_examples, dev_set, self.batch_size, logfile)
-                self.demo(gaussians_for_demo, train_examples[0][gen_epoch], train_examples[1][gen_epoch], gen_epoch, sess)
+                tf_ops = ([self.dg_train_step] * self.discr_epochs) + [self.g_train_step]
+                self.run_epoch(tf_ops, [(self.reconstruction_loss, "reconstruction"),
+                                        (self.g_loss, "generator"), (self.dg_loss, "Gaussian"),
+                                        (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
+                               logfile)
+                # if gen_epoch > 0:
+                #     gen_tf_ops = self.g_train_step
+                #     gen_dev_loss = self.run_epoch(gen_tf_ops, [(self.reconstruction_loss, "reconstruction"),
+                #                                                (self.g_loss, "generator")], sess, train_examples,
+                #                                   dev_set, self.batch_size, logfile)
+                #     # if gen_dev_loss < best_gen_dev_loss:
+                #     #     best_gen_dev_loss = gen_dev_loss
+                #     #     save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
+                #     #     print("New best dev for generator! Saving model in {}".format(save_path))
+                #     #     saver.save(sess, save_path)
+                #
+                # for discr_epoch in range(self.discr_epochs):
+                #     print("Gen Epoch {} - Discriminator Epoch {:} out of {:}".format(gen_epoch + 1,
+                #                                                                      discr_epoch + 1,
+                #                                                                      self.discr_epochs))
+                #     discr_tf_ops = [self.dg_train_step]  # , self.di_train_step]
+                #     discr_dev_loss = self.run_epoch(discr_tf_ops,
+                #                                     [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
+                #                                     sess,
+                #                                     train_examples, dev_set, self.batch_size, logfile)
+                self.demo(gaussians_for_demo, train_examples[0][gen_epoch % 1000], train_examples[1][gen_epoch % 1000],
+                          gen_epoch, sess)
 
     def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
         # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
@@ -380,11 +386,11 @@ class Generator(ModularGenerator):
 
         # Output Deconvolution (Transpose Convolution) or Unconvolution Layers
         params["use_transpose"] = True
-        params['out_conv_layers'] = 3
-        params['out_conv_filters'] = [params['dim']*4, params['dim']*2, 1]
-        params['out_conv_dim'] = [5, 5, 5]
-        params['out_conv_stride'] = [2, 2, 2]
-        params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, tf.nn.sigmoid]
+        params['out_conv_layers'] = 2
+        params['out_conv_filters'] = [params['dim'] * 2, 1]
+        params['out_conv_dim'] = [5, 5]
+        params['out_conv_stride'] = [2, 2]
+        params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.sigmoid]
 
         # Model Info Params
         params["model_name"] = "generator"
@@ -534,17 +540,25 @@ class ImageDiscriminator(ModularDiscriminator):
 def preprocess_imgs(imgs):
     return imgs
 
+
 if __name__ == '__main__':
     mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
     m = DC_WGAN()
     m.build()
 
+    # train_examples = [
+    #     np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
+    #     mnist.train.labels]
+    # dev_examples = [
+    #     np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
+    #     mnist.validation.labels]
+
     train_examples = [
-        np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[:1000],
-        mnist.train.labels[:1000]]
+        mnist.train.images.reshape((-1, 28, 28, 1)),
+        mnist.train.labels]
     dev_examples = [
-        np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[:1000],
-        mnist.validation.labels[:1000]]
+        mnist.validation.images.reshape((-1, 28, 28, 1)),
+        mnist.validation.labels]
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())

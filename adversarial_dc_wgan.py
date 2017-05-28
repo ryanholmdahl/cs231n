@@ -31,8 +31,8 @@ class DC_WGAN():
         # Learning Parameters
         self.generator_epochs = 200000
         self.discr_epochs = 5
-        self.lr = 5e-5
-        self.lr_decay = 0.98
+        self.lr = 1e-5
+        self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
         self.batch_size = 32
@@ -91,7 +91,7 @@ class DC_WGAN():
         return dg_solver, di_solver, g_solver
 
     def loss(self, image_logits_real, image_logits_fake, gaussian_logits_real, gaussian_logits_fake, real_imgs,
-             generated_imgs):
+             generated_imgs, real_gaussians, fake_gaussians):
         # Generator Cost
         gen_image_cost = -tf.reduce_mean(image_logits_fake)
         gen_gaussian_cost = -tf.reduce_mean(gaussian_logits_fake)
@@ -103,22 +103,37 @@ class DC_WGAN():
         )
 
         # Discriminator Cost
-        discr_image_cost = tf.reduce_mean(image_logits_real) - tf.reduce_mean(image_logits_fake)
-        discr_gaussian_cost = tf.reduce_mean(gaussian_logits_real) - tf.reduce_mean(gaussian_logits_fake)
-        alpha = tf.random_uniform(
-            shape=[self.batch_size],
+        discr_image_cost = tf.reduce_mean(image_logits_fake) - tf.reduce_mean(image_logits_real)
+        discr_gaussian_cost = tf.reduce_mean(gaussian_logits_fake) - tf.reduce_mean(gaussian_logits_real)
+
+        image_alpha = tf.random_uniform(
+            shape=tf.shape(real_imgs),
             minval=0.,
             maxval=1.
         )
-        # image_differences = generated_imgs - real_imgs
-        # image_interpolates = real_imgs + (alpha * image_differences)
-        # interpolate_imgs = self.image_discriminator.add_prediction_op(input_logits=image_interpolates, data_type='interpolates')
-        # interpolate_imgs = tf.reshape(interpolate_imgs, [-1, self.im_height, self.im_width, self.im_channels])
-        # image_gradients = tf.gradients(interpolate_imgs, [image_interpolates])[0]
-        # image_slopes = tf.sqrt(tf.reduce_sum(tf.square(image_gradients), reduction_indices=[1]))
-        # image_gradient_penalty = tf.reduce_mean((image_slopes - 1.) ** 2)
-        # discr_image_cost += self.lambda_cost * image_gradient_penalty
-        #discr_gaussian_cost += self.lambda_cost * gradient_penalty
+        image_differences = generated_imgs - real_imgs
+        image_interpolates = real_imgs + (image_alpha * image_differences)
+        print(image_interpolates.get_shape())
+        interpolate_imgs = self.image_discriminator.add_prediction_op(input_logits=image_interpolates,
+                                                                      data_type='interpolates', reuse=True)
+        image_gradients = tf.gradients(interpolate_imgs, [image_interpolates])[0]
+        image_slopes = tf.sqrt(tf.reduce_sum(tf.square(image_gradients), reduction_indices=[1]))
+        image_gradient_penalty = tf.reduce_mean((image_slopes - 1.) ** 2)
+        discr_image_cost += self.lambda_cost * image_gradient_penalty
+
+        gaussian_alpha = tf.random_uniform(
+            shape=[tf.shape(image_logits_real)[0], self.style_dim],
+            minval=0.,
+            maxval=1.
+        )
+        gaussian_differences = fake_gaussians - real_gaussians
+        gaussian_interpolates = real_gaussians + (gaussian_alpha * gaussian_differences)
+        interpolate_gauss = self.gaussian_discriminator.add_prediction_op(input_logits=gaussian_interpolates,
+                                                                          data_type='interpolates', reuse=True)
+        gaussian_gradients = tf.gradients(interpolate_gauss, [gaussian_interpolates])[0]
+        gaussian_slopes = tf.sqrt(tf.reduce_sum(tf.square(gaussian_gradients), reduction_indices=[1]))
+        gaussian_gradient_penalty = tf.reduce_mean((gaussian_slopes - 1.) ** 2)
+        discr_gaussian_cost += self.lambda_cost * gaussian_gradient_penalty
         return discr_gaussian_cost, discr_image_cost, g_cost, gen_reconstruction_cost
 
     def build(self):
@@ -156,9 +171,12 @@ class DC_WGAN():
         self.dg_solver, self.di_solver, self.g_solver = self.get_solvers()
 
         # get our loss
-        self.dg_loss, self.di_loss, self.g_loss, self.reconstruction_loss = self.loss(self.image_logits_real, self.image_logits_fake,
-                                                            self.gaussian_logits_real, self.gaussian_logits_fake,
-                                                            self.image_in, self.gen_images)
+        self.dg_loss, self.di_loss, self.g_loss, self.reconstruction_loss = self.loss(self.image_logits_real,
+                                                                                      self.image_logits_fake,
+                                                                                      self.gaussian_logits_real,
+                                                                                      self.gaussian_logits_fake,
+                                                                                      self.image_in, self.gen_images,
+                                                                                      self.gaussian_in, self.gen_styles)
 
         # setup training steps
         self.g_train_step = self.g_solver.minimize(self.g_loss, var_list=self.g_vars)
@@ -178,49 +196,48 @@ class DC_WGAN():
                 logfile.write(str(gen_epoch + 1))
 
                 if gen_epoch > 0:
-                    gen_tf_ops = [self.g_train_step, self.g_loss]
-                    gen_dev_loss = self.run_epoch(gen_tf_ops, self.reconstruction_loss, sess, train_examples,
+                    gen_tf_ops = self.g_train_step
+                    gen_dev_loss = self.run_epoch(gen_tf_ops, [(self.reconstruction_loss, "reconstruction"),
+                                                               (self.g_loss, "generator")], sess, train_examples,
                                                   dev_set, self.batch_size, logfile)
-                    if gen_dev_loss < best_gen_dev_loss:
-                        best_gen_dev_loss = gen_dev_loss
-                        save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
-                        print("New best dev for generator! Saving model in {}".format(save_path))
-                        saver.save(sess, save_path)
+                    # if gen_dev_loss < best_gen_dev_loss:
+                    #     best_gen_dev_loss = gen_dev_loss
+                    #     save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
+                    #     print("New best dev for generator! Saving model in {}".format(save_path))
+                    #     saver.save(sess, save_path)
 
                 for discr_epoch in range(self.discr_epochs):
                     print("Gen Epoch {} - Discriminator Epoch {:} out of {:}".format(gen_epoch + 1,
                                                                                      discr_epoch + 1,
                                                                                      self.discr_epochs))
-                    discr_tf_ops = [self.dg_train_step, self.di_train_step, self.dg_loss, self.di_loss]
-                    discr_dev_loss = self.run_epoch(discr_tf_ops, self.dg_loss, sess,
-                                                    train_examples, dev_set, self.batch_size, logfile, True)
+                    discr_tf_ops = [self.dg_train_step, self.di_train_step]
+                    discr_dev_loss = self.run_epoch(discr_tf_ops,
+                                                    [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
+                                                    sess,
+                                                    train_examples, dev_set, self.batch_size, logfile)
 
-    def run_epoch(self, tf_ops, loss_fn, sess, train_examples, dev_set, batch_size, logfile=None, discriminator=False):
-        #if not discriminator:
-        #    prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
+    def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
+        # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
         for i, (inputs_batch, outputs_batch) in enumerate(minibatches(train_examples, batch_size)):
             feed = {
                 self.image_in: inputs_batch,
                 self.emotion_label: outputs_batch,
                 self.gaussian_in: np.random.normal(size=(len(inputs_batch), self.style_dim))
             }
-            if discriminator:
-                dg_loss, di_loss = self.train_on_batch(tf_ops, feed, sess, get_loss=True, discriminator=True)
-                #prog.update(i + 1, [("gaussian loss", dg_loss), ("image_loss", di_loss)])
-            else:
-                loss = self.train_on_batch(tf_ops, feed, sess, get_loss=True)
-                #prog.update(i + 1, [("train loss", loss)])
+            self.train_on_batch(tf_ops, feed, sess)
+            # prog.update(i + 1, [("train loss", loss)])
+        dev_loss_sum = 0
+        for (loss_fn, loss_name) in loss_fns:
+            train_loss = self.eval_batches(loss_fn, sess, train_examples, self.n_eval_batches)
+            print("Train {} loss: {:.6f}".format(loss_name, train_loss))
+            dev_loss = self.eval_batches(loss_fn, sess, dev_set, self.n_eval_batches)
+            print("Dev {} loss: {:.6f}".format(loss_name, dev_loss))
+            dev_loss_sum += dev_loss
+        # logfile.write(",{0:.5f},{1:.5f}\n".format(float(train_loss), float(dev_loss)))
         print("")
-        print("Evaluating on train set...")
-        train_loss = self.eval_batches(loss_fn, sess, train_examples, self.n_eval_batches)
-        print("Train Loss: {0:.6f}".format(train_loss))
-        print("Evaluating on dev set...")
-        dev_loss = self.eval_batches(loss_fn, sess, dev_set, self.n_eval_batches)
-        print("Dev Loss: {0:.6f}".format(dev_loss))
-        logfile.write(",{0:.5f},{1:.5f}\n".format(float(train_loss), float(dev_loss)))
-        return dev_loss
+        return dev_loss_sum
 
-    def train_on_batch(self, tf_ops, feed, sess, get_loss=False, discriminator=False):
+    def train_on_batch(self, tf_ops, feed, sess):
         """Perform one step of gradient descent on the provided batch of data.
 
         Args:
@@ -231,16 +248,15 @@ class DC_WGAN():
         Returns:
             loss: loss over the batch (a scalar) or zero if not requested
         """
-        if get_loss:
-            if discriminator:
-                _, _, dg_loss, di_loss = sess.run(tf_ops, feed_dict=feed)
-                return dg_loss, di_loss
-            else:
-                _, loss = sess.run(tf_ops, feed_dict=feed)
-                return loss
-        else:
-            sess.run(tf_ops, feed_dict=feed)
-            return 0
+        # if get_loss:
+        #     if discriminator:
+        #         _, _, dg_loss, di_loss = sess.run(tf_ops, feed_dict=feed)
+        #         return dg_loss, di_loss
+        #     else:
+        #         _, loss = sess.run(tf_ops, feed_dict=feed)
+        #         return loss
+        # else:
+        sess.run(tf_ops, feed_dict=feed)
 
     def eval_batches(self, loss_fn, sess, eval_set, num_batches):
         """Evaluate the loss on a number of given minibatches of a dataset.
@@ -399,8 +415,8 @@ class GaussianDiscriminator(ModularModel):
     def create_feed_dict(self, inputs_batch, outputs_batch=None, **kwargs):
         pass
 
-    def add_prediction_op(self, input_logits=None, **kwargs):
-        with tf.variable_scope(self.config.model_name):
+    def add_prediction_op(self, input_logits=None, reuse=None, **kwargs):
+        with tf.variable_scope(self.config.model_name, reuse=reuse):
             prev_output = self.add_in_fc(input_logits)
             return prev_output
 
@@ -451,11 +467,14 @@ class ImageDiscriminator(ModularModel):
 
         # Input Convolution Layers
         params['dim'] = 64
-        params['in_conv_layers'] = 3
+        params['in_conv_layers'] = 0
         params['in_conv_filters'] = [params['dim'], params['dim'] * 2, params['dim'] * 4]
         params['in_conv_dim'] = [5, 5, 5]
         params['in_conv_stride'] = [2, 2, 2]
-        params['out_conv_activation_func'] = [leaky_relu, leaky_relu, leaky_relu]
+        params['in_conv_activation_func'] = [leaky_relu, leaky_relu, leaky_relu]  # ToDo
+        params["fc_layers"] = 3
+        params["fc_dim"] = [1024, 1024, 1]
+        params["fc_activation_funcs"] = [leaky_relu, leaky_relu, None]
 
         # Model Info Params
         params["model_name"] = "image_discriminator"
@@ -469,15 +488,11 @@ class ImageDiscriminator(ModularModel):
     def create_feed_dict(self, inputs_batch, outputs_batch=None, **kwargs):
         pass
 
-    def add_prediction_op(self, input_logits=None, **kwargs):
-        with tf.variable_scope(self.config.model_name):
-            prev_output = self.add_in_convolution(input_logits, maxpooling=False)
-            layer_name = '{}.discriminator_output'.format(self.config.model_name)
-            flattened_output = tf.reshape(prev_output, [-1, self.config.dim * 4])
-            preds = tf.layers.dense(flattened_output, 1,
-                                    kernel_initializer=tf.contrib.layers.xavier_initializer(),
-                                    name=layer_name)
-            return preds
+    def add_prediction_op(self, input_logits=None, reuse=None, **kwargs):
+        with tf.variable_scope(self.config.model_name, reuse=reuse):
+            # prev_output = self.add_in_convolution(input_logits, maxpooling=False)
+            prev_output = self.add_in_fc(tf.contrib.layers.flatten(input_logits))
+            return prev_output
 
     def add_loss_op(self, loss_params=None):
         pass
@@ -524,7 +539,8 @@ if __name__ == '__main__':
         np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[0:1000],
         mnist.train.labels]
     dev_examples = [
-        np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[0:1000],
+        np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[
+        0:1000],
         mnist.validation.labels]
     print(train_examples[0].shape)
 

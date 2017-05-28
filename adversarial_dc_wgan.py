@@ -16,6 +16,7 @@ from model_builder import ModularDiscriminator
 from utils.activation_funcs import leaky_relu
 from utils.util import minibatches, Progbar
 from data.dataset_builder import Dataset
+from scipy.misc import imsave
 from tensorflow.examples.tutorials.mnist import input_data
 
 class DC_WGAN():
@@ -43,13 +44,17 @@ class DC_WGAN():
         # Logging Params
         self.ckpt_path = "ckpt"
         self.log_path = "log"
+        self.recon_path = "recon_outputs"
 
         # Model Parameters
         self.im_width = 48
         self.im_height = 48
         self.im_channels = 1
         self.style_dim = 128
+        self.num_demos = 10
         self.num_emotions = 10
+        self.imsave_scale_factor = 1
+
         params = {}
         params['im_width'] = self.im_width
         params['im_height'] = self.im_height
@@ -66,8 +71,9 @@ class DC_WGAN():
         image_in = tf.placeholder(tf.float32, shape=input_dims)  # Input Images
         emotion_label = tf.placeholder(tf.float32, shape=(None, self.num_emotions))  # Emotion One-hot Encoding
         gaussian_in = tf.placeholder(tf.float32, shape=(None, self.style_dim))
+        style_in = tf.placeholder(tf.float32, shape=(None, self.style_dim))
         global_step = tf.Variable(0, trainable=False)
-        return image_in, emotion_label, gaussian_in, global_step
+        return image_in, emotion_label, gaussian_in, style_in, global_step
 
     def get_solvers(self):
         dg_solver = tf.train.AdamOptimizer(
@@ -136,19 +142,26 @@ class DC_WGAN():
     def build(self):
         tf.reset_default_graph()
 
-        self.image_in, self.emotion_label, self.gaussian_in, self.global_step = self.add_place_holders()
-        self.gen_images = tf.reshape(
-            self.generator.add_prediction_op(preprocess_imgs(self.image_in), self.emotion_label),
-            shape=[-1, self.im_height, self.im_width, self.im_channels])
-        self.gen_styles = tf.reshape(self.generator.image_style, shape=[-1, self.style_dim])
+        self.image_in, self.emotion_label, self.gaussian_in, self.style_in, self.global_step = self.add_place_holders()
+        with tf.variable_scope("") as scope:
+            self.gen_images_autoencode = tf.reshape(
+                self.generator.add_prediction_op(preprocess_imgs(self.image_in), self.emotion_label),
+                shape=[-1, self.im_height, self.im_width, self.im_channels])
+
+            self.gen_styles = tf.reshape(self.generator.image_style, shape=[-1, self.style_dim])
+
+            scope.reuse_variables()
+            self.gen_images_style = tf.reshape(
+                self.generator.add_prediction_op(style_concat_input=self.emotion_label, style_input=self.style_in),
+                shape=[-1, self.im_height, self.im_width, self.im_channels])
 
         with tf.variable_scope("") as scope:
             # scale images to be -1 to 1
             self.image_logits_real = self.image_discriminator.add_prediction_op(preprocess_imgs(self.image_in))
 
-            # Re-use discriminator weights on new inputs
+            # Re-use discriminator weights on new inputs 
             scope.reuse_variables()
-            self.image_logits_fake = self.image_discriminator.add_prediction_op(self.gen_images)
+            self.image_logits_fake = self.image_discriminator.add_prediction_op(self.gen_images_autoencode)
 
         with tf.variable_scope("") as scope:
             # scale images to be -1 to 1
@@ -172,7 +185,8 @@ class DC_WGAN():
                                                                                       self.image_logits_fake,
                                                                                       self.gaussian_logits_real,
                                                                                       self.gaussian_logits_fake,
-                                                                                      self.image_in, self.gen_images,
+                                                                                      self.image_in,
+                                                                                      self.gen_images_autoencode,
                                                                                       self.gaussian_in, self.gen_styles)
 
         # setup training steps
@@ -187,7 +201,7 @@ class DC_WGAN():
         with open(os.path.join(self.ckpt_path, "DC_WGAN"), "w") as logfile:
             best_gen_dev_loss = float('inf')
             best_discr_dev_loss = float('inf')
-
+            gaussians_for_demo = np.random.normal(size=(self.num_demos, self.style_dim))
             for gen_epoch in range(self.generator_epochs):
                 print("Generator Epoch {:} out of {:}".format(gen_epoch + 1, self.generator_epochs))
                 logfile.write(str(gen_epoch + 1))
@@ -212,6 +226,7 @@ class DC_WGAN():
                                                     [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
                                                     sess,
                                                     train_examples, dev_set, self.batch_size, logfile)
+                self.demo(gaussians_for_demo, gen_epoch, sess)
 
     def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
         # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
@@ -291,6 +306,26 @@ class DC_WGAN():
         """
         loss = sess.run(loss_fn, feed_dict=feed)
         return loss
+
+    def pred_on_style_batch(self, feed, sess):
+        return sess.run(self.gen_images_style, feed_dict=feed)
+
+    def demo(self, demo_gaussians, epoch, sess):
+        emotion_ints = np.arange(self.num_emotions)
+        emotion_onehots = [[1 if i == t else 0 for t in range(self.num_emotions)] for i in emotion_ints]
+        emotion_repeated = np.repeat(emotion_onehots, self.num_demos, axis=0)
+        feed = {
+            self.style_in: np.tile(demo_gaussians, (self.num_emotions, 1)),
+            self.emotion_label: emotion_repeated
+        }
+        outputs = np.multiply(self.pred_on_style_batch(feed, sess), self.imsave_scale_factor)
+        path_name = os.path.join(self.recon_path, str(epoch))
+        if not os.path.exists(path_name):
+            os.makedirs(path_name)
+        for i in range(len(outputs)):
+            emotion = i//self.num_demos
+            style = int(i - emotion * self.num_demos) % self.num_emotions
+            imsave(os.path.join(path_name, "s{}_e{}.png".format(int(style), int(emotion))), np.squeeze(outputs[i]))
 
     def restore_from_checkpoint(self, sess, saver):
         save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
@@ -498,7 +533,6 @@ if __name__ == '__main__':
         np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[
         0:1000],
         mnist.validation.labels]
-    print(train_examples[0].shape)
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())

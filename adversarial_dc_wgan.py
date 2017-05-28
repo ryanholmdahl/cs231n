@@ -31,7 +31,7 @@ class DC_WGAN():
         # Learning Parameters
         self.generator_epochs = 200000
         self.discr_epochs = 5
-        self.lr = 1e-4
+        self.lr = 1e-5
         self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
@@ -196,48 +196,48 @@ class DC_WGAN():
                 logfile.write(str(gen_epoch + 1))
 
                 if gen_epoch > 0:
-                    gen_tf_ops = [self.g_train_step, self.g_loss]
-                    gen_dev_loss = self.run_epoch(gen_tf_ops, self.reconstruction_loss, sess, train_examples,
+                    gen_tf_ops = self.g_train_step
+                    gen_dev_loss = self.run_epoch(gen_tf_ops, [(self.reconstruction_loss, "reconstruction"),
+                                                               (self.g_loss, "generator")], sess, train_examples,
                                                   dev_set, self.batch_size, logfile)
-                    if gen_dev_loss < best_gen_dev_loss:
-                        best_gen_dev_loss = gen_dev_loss
-                        save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
-                        print("New best dev for generator! Saving model in {}".format(save_path))
-                        saver.save(sess, save_path)
+                    # if gen_dev_loss < best_gen_dev_loss:
+                    #     best_gen_dev_loss = gen_dev_loss
+                    #     save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
+                    #     print("New best dev for generator! Saving model in {}".format(save_path))
+                    #     saver.save(sess, save_path)
 
                 for discr_epoch in range(self.discr_epochs):
                     print("Gen Epoch {} - Discriminator Epoch {:} out of {:}".format(gen_epoch + 1,
                                                                                      discr_epoch + 1,
                                                                                      self.discr_epochs))
-                    discr_tf_ops = [self.dg_train_step, self.di_train_step, self.dg_loss, self.di_loss]
-                    discr_dev_loss = self.run_epoch(discr_tf_ops, self.dg_loss, sess,
-                                                    train_examples, dev_set, self.batch_size, logfile, True)
+                    discr_tf_ops = [self.dg_train_step, self.di_train_step]
+                    discr_dev_loss = self.run_epoch(discr_tf_ops,
+                                                    [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
+                                                    sess,
+                                                    train_examples, dev_set, self.batch_size, logfile)
 
-    def run_epoch(self, tf_ops, loss_fn, sess, train_examples, dev_set, batch_size, logfile=None, discriminator=False):
-        prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
+    def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
+        # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
         for i, (inputs_batch, outputs_batch) in enumerate(minibatches(train_examples, batch_size)):
             feed = {
                 self.image_in: inputs_batch,
                 self.emotion_label: outputs_batch,
                 self.gaussian_in: np.random.normal(size=(len(inputs_batch), self.style_dim))
             }
-            if discriminator:
-                dg_loss, di_loss = self.train_on_batch(tf_ops, feed, sess, get_loss=True, discriminator=True)
-                prog.update(i + 1, [("gaussian loss", dg_loss), ("image_loss", di_loss)])
-            else:
-                loss = self.train_on_batch(tf_ops, feed, sess, get_loss=True)
-                prog.update(i + 1, [("train loss", loss)])
+            self.train_on_batch(tf_ops, feed, sess)
+            # prog.update(i + 1, [("train loss", loss)])
+        dev_loss_sum = 0
+        for (loss_fn, loss_name) in loss_fns:
+            train_loss = self.eval_batches(loss_fn, sess, train_examples, self.n_eval_batches)
+            print("Train {} loss: {:.6f}".format(loss_name, train_loss))
+            dev_loss = self.eval_batches(loss_fn, sess, dev_set, self.n_eval_batches)
+            print("Dev {} loss: {:.6f}".format(loss_name, dev_loss))
+            dev_loss_sum += dev_loss
+        # logfile.write(",{0:.5f},{1:.5f}\n".format(float(train_loss), float(dev_loss)))
         print("")
-        print("Evaluating on train set...")
-        train_loss = self.eval_batches(loss_fn, sess, train_examples, self.n_eval_batches)
-        print("Train Loss: {0:.6f}".format(train_loss))
-        print("Evaluating on dev set...")
-        dev_loss = self.eval_batches(loss_fn, sess, dev_set, self.n_eval_batches)
-        print("Dev Loss: {0:.6f}".format(dev_loss))
-        logfile.write(",{0:.5f},{1:.5f}\n".format(float(train_loss), float(dev_loss)))
-        return dev_loss
+        return dev_loss_sum
 
-    def train_on_batch(self, tf_ops, feed, sess, get_loss=False, discriminator=False):
+    def train_on_batch(self, tf_ops, feed, sess):
         """Perform one step of gradient descent on the provided batch of data.
 
         Args:
@@ -248,16 +248,15 @@ class DC_WGAN():
         Returns:
             loss: loss over the batch (a scalar) or zero if not requested
         """
-        if get_loss:
-            if discriminator:
-                _, _, dg_loss, di_loss = sess.run(tf_ops, feed_dict=feed)
-                return dg_loss, di_loss
-            else:
-                _, loss = sess.run(tf_ops, feed_dict=feed)
-                return loss
-        else:
-            sess.run(tf_ops, feed_dict=feed)
-            return 0
+        # if get_loss:
+        #     if discriminator:
+        #         _, _, dg_loss, di_loss = sess.run(tf_ops, feed_dict=feed)
+        #         return dg_loss, di_loss
+        #     else:
+        #         _, loss = sess.run(tf_ops, feed_dict=feed)
+        #         return loss
+        # else:
+        sess.run(tf_ops, feed_dict=feed)
 
     def eval_batches(self, loss_fn, sess, eval_set, num_batches):
         """Evaluate the loss on a number of given minibatches of a dataset.

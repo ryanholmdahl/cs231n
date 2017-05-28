@@ -32,7 +32,9 @@ class DC_WGAN():
         # Learning Parameters
         self.generator_epochs = 200000
         self.discr_epochs = 5
-        self.lr = 1e-5
+        self.gen_lr = 1e-6
+        self.di_lr = 1e-6
+        self.dg_lr = 1e-6
         self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
@@ -53,7 +55,7 @@ class DC_WGAN():
         self.im_width = 48
         self.im_height = 48
         self.im_channels = 1
-        self.style_dim = 128
+        self.style_dim = 50
         self.num_demos = 10
         self.num_emotions = 10
         self.imsave_scale_factor = 1
@@ -80,17 +82,17 @@ class DC_WGAN():
 
     def get_solvers(self):
         dg_solver = tf.train.AdamOptimizer(
-            learning_rate=self.lr,
+            learning_rate=self.dg_lr,
             beta1=self.beta1,
             beta2=self.beta2,
         )
         di_solver = tf.train.AdamOptimizer(
-            learning_rate=self.lr,
+            learning_rate=self.di_lr,
             beta1=self.beta1,
             beta2=self.beta2,
         )
         g_solver = tf.train.AdamOptimizer(
-            learning_rate=self.lr,
+            learning_rate=self.gen_lr,
             beta1=self.beta1,
             beta2=self.beta2,
         )
@@ -148,7 +150,8 @@ class DC_WGAN():
         self.image_in, self.emotion_label, self.gaussian_in, self.style_in, self.global_step = self.add_place_holders()
         with tf.variable_scope("") as scope:
             self.gen_images_autoencode = tf.reshape(
-                self.generator.add_prediction_op(preprocess_imgs(self.image_in), self.emotion_label),
+                self.generator.add_prediction_op(input_logits=preprocess_imgs(self.image_in),
+                                                 style_concat_input=self.emotion_label),
                 shape=[-1, self.im_height, self.im_width, self.im_channels])
 
             self.gen_styles = tf.reshape(self.generator.image_style, shape=[-1, self.style_dim])
@@ -313,7 +316,10 @@ class DC_WGAN():
     def pred_on_style_batch(self, feed, sess):
         return sess.run(self.gen_images_style, feed_dict=feed)
 
-    def demo(self, demo_gaussians, epoch, sess):
+    def pred_on_image_batch(self, feed, sess):
+        return sess.run(self.gen_images_autoencode, feed_dict=feed)
+
+    def demo(self, demo_gaussians, demo_image, demo_emotion, epoch, sess):
         emotion_ints = np.arange(self.num_emotions)
         emotion_onehots = [[1 if i == t else 0 for t in range(self.num_emotions)] for i in emotion_ints]
         emotion_repeated = np.repeat(emotion_onehots, self.num_demos, axis=0)
@@ -326,9 +332,14 @@ class DC_WGAN():
         if not os.path.exists(path_name):
             os.makedirs(path_name)
         for i in range(len(outputs)):
-            emotion = i//self.num_demos
+            emotion = i // self.num_demos
             style = int(i - emotion * self.num_demos) % self.num_emotions
             imsave(os.path.join(path_name, "s{}_e{}.png".format(int(style), int(emotion))), np.squeeze(outputs[i]))
+        imsave(os.path.join(path_name, "image_in.png"), np.squeeze(demo_image))
+        feed = {
+            self.image_in: 
+        }
+        decoded = self.pred_on_image_batch(feed, sess)
 
     def restore_from_checkpoint(self, sess, saver):
         save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
@@ -359,8 +370,8 @@ class Generator(ModularGenerator):
         params['in_conv_layers'] = 0
 
         # Input FC Layers
-        params['fc_layers'] = 6
-        params['fc_dim'] = [1024, 1024, 1024, 1024, 1024, 128]
+        params['fc_layers'] = 1
+        params['fc_dim'] = [1024]
         params['fc_activation_funcs'] = [tf.nn.relu] * params['fc_layers']
 
         # Normalize Input Vector?
@@ -377,7 +388,7 @@ class Generator(ModularGenerator):
         params['out_conv_filters'] = [params['dim'] * 2, params['dim'], 1]
         params['out_conv_dim'] = [5, 5, 5]
         params['out_conv_stride'] = [2, 2, 2]
-        params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, tf.nn.tanh]
+        params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, tf.nn.sigmoid]
 
         # Model Info Params
         params["model_name"] = "generator"
@@ -571,11 +582,10 @@ if __name__ == '__main__':
     m.build()
 
     train_examples = [
-        np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[0:1000],
+        np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
         mnist.train.labels]
     dev_examples = [
-        np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[
-        0:1000],
+        np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
         mnist.validation.labels]
 
     with tf.Session() as sess:

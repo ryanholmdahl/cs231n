@@ -119,13 +119,14 @@ class ModularGenerator(Model):
             if style_input is None:
                 prev_output = self.add_in_convolution(input_logits)
                 prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
-                self.image_style = tf.layers.dense(prev_output, self.config.style_dim,
+                prev_output = tf.layers.dense(prev_output, self.config.style_dim,
                                                    kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                                    name="style")
+                self.image_style = prev_output
             else:
-                self.image_style = style_input
+                prev_output = style_input
             if style_concat_input is not None:
-                prev_output = tf.concat((self.image_style, style_concat_input), axis=1)
+                prev_output = tf.concat((prev_output, style_concat_input), axis=1)
             else:
                 prev_output = self.image_style
             if self.config.out_conv_layers > 0:

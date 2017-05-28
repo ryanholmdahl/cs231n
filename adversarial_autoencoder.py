@@ -114,47 +114,50 @@ class ModularGenerator(Model):
         prev_output = tf.layers.dropout(prev_output, rate=self.config.fc_dropout, training=self.is_train)
         return tf.reshape(prev_output, (-1, self.config.im_height, self.config.im_width, self.config.im_channels))
 
-    def add_prediction_op(self, input_logits=None, style_concat_input=None, **kwargs):
+    def add_prediction_op(self, input_logits=None, style_concat_input=None, style_input=None, **kwargs):
         with tf.variable_scope(self.config.model_name) as scope:
-            if input_logits is None:
-                input_logits = self.image_in
-            try:
+            if style_input is None:
                 prev_output = self.add_in_convolution(input_logits)
                 prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
                 self.image_style = tf.layers.dense(prev_output, self.config.style_dim,
                                                    kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                                    name="style")
-                if style_concat_input is not None:
-                    prev_output = tf.concat((self.image_style, style_concat_input), axis=1)
+            else:
+                self.image_style = style_input
+            if style_concat_input is not None:
+                prev_output = tf.concat((self.image_style, style_concat_input), axis=1)
+            else:
+                prev_output = self.image_style
+            if self.config.out_conv_layers > 0:
+                prev_output = self.add_fixed_size_embed(prev_output)
+                if self.config.use_transpose:
+                    result = self.add_out_deconvolution(prev_output)
                 else:
-                    prev_output = self.image_style
-                if self.config.out_conv_layers > 0:
-                    prev_output = self.add_fixed_size_embed(prev_output)
-                    if self.config.use_transpose:
-                        result = self.add_out_deconvolution(prev_output)
-                    else:
-                        result = self.add_out_unconvolution(prev_output)
-                else:
-                    result = self.add_out_fc(prev_output)
-            except ValueError:
-                scope.reuse_variables()
-                prev_output = self.add_in_convolution(input_logits)
-                prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
-                self.image_style = tf.layers.dense(prev_output, self.config.style_dim,
-                                                   kernel_initializer=tf.contrib.layers.xavier_initializer(),
-                                                   name="style")
-                if style_concat_input is not None:
-                    prev_output = tf.concat((self.image_style, style_concat_input), axis=1)
-                else:
-                    prev_output = self.image_style
-                if self.config.out_conv_layers > 0:
-                    prev_output = self.add_fixed_size_embed(prev_output)
-                    if self.config.use_transpose:
-                        result = self.add_out_deconvolution(prev_output)
-                    else:
-                        result = self.add_out_unconvolution(prev_output)
-                else:
-                    result = self.add_out_fc(prev_output)
+                    result = self.add_out_unconvolution(prev_output)
+            else:
+                result = self.add_out_fc(prev_output)
+            # except ValueError:
+            #     scope.reuse_variables()
+            #     if style_input is None:
+            #         prev_output = self.add_in_convolution(input_logits)
+            #         prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
+            #         self.image_style = tf.layers.dense(prev_output, self.config.style_dim,
+            #                                            kernel_initializer=tf.contrib.layers.xavier_initializer(),
+            #                                            name="style")
+            #     else:
+            #         self.image_style = style_input
+            #     if style_concat_input is not None:
+            #         prev_output = tf.concat((self.image_style, style_concat_input), axis=1)
+            #     else:
+            #         prev_output = self.image_style
+            #     if self.config.out_conv_layers > 0:
+            #         prev_output = self.add_fixed_size_embed(prev_output)
+            #         if self.config.use_transpose:
+            #             result = self.add_out_deconvolution(prev_output)
+            #         else:
+            #             result = self.add_out_unconvolution(prev_output)
+            #     else:
+            #         result = self.add_out_fc(prev_output)
             return result
 
     def add_loss_op(self, **kwargs):

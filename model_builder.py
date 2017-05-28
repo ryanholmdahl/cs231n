@@ -13,15 +13,7 @@ from model import Model
 from utils.layers import unpool
 from utils.util import show_image_example
 
-
-class ModularModel(Model):
-    def add_placeholders(self):
-        input_dims = (None, self.config.im_height, self.config.im_width, self.config.im_channels)
-        self.image_in = tf.placeholder(tf.float32, shape=input_dims)
-        self.truth_in = tf.placeholder(tf.float32, input_dims)
-        self.global_step = tf.Variable(0, trainable=False)
-        self.is_train = tf.placeholder(tf.bool, shape=())
-
+class ModularDiscriminator(Model):
     def add_in_convolution(self, prev_output, maxpooling=True):
         for i in range(self.config.in_conv_layers):
             layer_name = 'inconv.{}'.format(i+1)
@@ -151,30 +143,22 @@ class ModularModel(Model):
                     result = self.add_out_fc(prev_output)
             return result
 
+    def add_placeholders(self):
+        pass
+
     def add_loss_op(self, **kwargs):
-        return tf.reduce_mean(kwargs['preds'] - kwargs['rotated_imgs']) ** 2 / 2
+        pass
 
     def add_training_op(self, loss):
-        learning_rate = tf.train.exponential_decay(self.config.lr, self.global_step, self.config.lr_decay_steps,
-                                                   self.config.lr_decay, staircase=True)
-        return tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=self.global_step)
+        pass
 
     def create_feed_dict(self, inputs_batch, outputs_batch=None, **kwargs):
-        feed_dict = {self.image_in: inputs_batch}
-        if outputs_batch is not None:
-            feed_dict[self.truth_in] = outputs_batch
-            feed_dict[self.is_train] = True
-        else:
-            feed_dict[self.is_train] = False
-        return feed_dict
+        pass
+
+    def build(self):
+        pass
 
     def demo(self, sess, train_data, dev_data, demo_count):
         for i in range(demo_count):
             show_image_example(sess, self, train_data[0][i], train_data[1][i], name='train/fig_{}.png'.format(i+1))
             show_image_example(sess, self, dev_data[0][i], dev_data[1][i], name='dev/fig_{}.png'.format(i+1))
-
-    def build(self):
-        self.add_placeholders()
-        self.pred = self.add_prediction_op()
-        self.loss = self.add_loss_op(preds=self.pred, rotated_imgs=self.truth_in)
-        self.train_op = self.add_training_op(self.loss)

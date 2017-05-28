@@ -61,7 +61,7 @@ class ModularGenerator(Model):
         embed_height = int(self.config.im_height / scaling_factor)
         embed_dim = embed_width * embed_height * self.config.embed_channels
 
-        # Determine Activtion Function
+        # Determine Activation Function
         try:
             activation_func = self.config.embed_activation_func
         except AttributeError:

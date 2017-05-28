@@ -229,7 +229,7 @@ class DC_WGAN():
                                                     [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
                                                     sess,
                                                     train_examples, dev_set, self.batch_size, logfile)
-                self.demo(gaussians_for_demo, sess)
+                self.demo(gaussians_for_demo, gen_epoch, sess)
 
     def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
         # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
@@ -322,11 +322,13 @@ class DC_WGAN():
             self.emotion_label: emotion_repeated
         }
         outputs = np.multiply(self.pred_on_style_batch(feed, sess), self.imsave_scale_factor)
-        path_name = os.path.join(self.recon_path, epoch)
+        path_name = os.path.join(self.recon_path, str(epoch))
         if not os.path.exists(path_name):
             os.makedirs(path_name)
         for i in range(len(outputs)):
-            imsave(os.path.join(path_name, "s{}_e{}.png".format(i/self.num_demos, i%self.num_emotions)), np.squeeze(outputs[i]))
+            emotion = i//self.num_demos
+            style = int(i - emotion * self.num_demos) % self.num_emotions
+            imsave(os.path.join(path_name, "s{}_e{}.png".format(int(style), int(emotion))), np.squeeze(outputs[i]))
 
     def restore_from_checkpoint(self, sess, saver):
         save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)

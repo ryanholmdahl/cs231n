@@ -196,3 +196,6 @@ class ModularGenerator(Model):
         for i in range(demo_count):
             show_image_example(sess, self, train_data[0][i], train_data[1][i], name='train/fig_{}.png'.format(i + 1))
             show_image_example(sess, self, dev_data[0][i], dev_data[1][i], name='dev/fig_{}.png'.format(i + 1))
+
+class AdvesarialAutoencoder(ModularGenerator):
+    

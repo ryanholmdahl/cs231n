@@ -19,8 +19,13 @@ class ModularDiscriminator(Model):
             layer_name = 'inconv.{}'.format(i+1)
             if self.config.model_name != '':
                 layer_name = '{}.{}'.format(self.config.model_name, layer_name)
+            try:
+                activation_func = self.config.fc_activation_funcs[i]
+            except AttributeError:
+                activation_func = tf.nn.relu
             prev_output = tf.layers.conv2d(prev_output, self.config.in_conv_filters[i], self.config.in_conv_dim[i],
-                                           strides=self.config.in_conv_stride[i], activation=tf.nn.relu,
+                                           strides=self.config.in_conv_stride[i], activation=activation_func,
+                                           padding='SAME',
                                            kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
                                            name=layer_name)
             if maxpooling:

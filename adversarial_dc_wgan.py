@@ -463,7 +463,7 @@ class ImageDiscriminator(ModularDiscriminator):
 
         # Input Convolution Layers
         params['dim'] = 64
-        params['in_conv_layers'] = 0
+        params['in_conv_layers'] = 3
         params['in_conv_filters'] = [params['dim'], params['dim'] * 2, params['dim'] * 4]
         params['in_conv_dim'] = [5, 5, 5]
         params['in_conv_stride'] = [2, 2, 2]
@@ -480,8 +480,8 @@ class ImageDiscriminator(ModularDiscriminator):
 
     def add_prediction_op(self, input_logits=None, reuse=None, **kwargs):
         with tf.variable_scope(self.config.model_name, reuse=reuse):
-            # prev_output = self.add_in_convolution(input_logits, maxpooling=False)
-            prev_output = self.add_in_fc(tf.contrib.layers.flatten(input_logits))
+            conv_output = self.add_in_convolution(input_logits, maxpooling=False)
+            prev_output = self.add_in_fc(tf.contrib.layers.flatten(conv_output))
             return prev_output
 
     def add_placeholders(self):

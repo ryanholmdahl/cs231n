@@ -12,15 +12,12 @@ import numpy as np
 import os
 
 from adversarial_autoencoder import ModularGenerator
-from model_builder import ModularModel
+from model_builder import ModularDiscriminator
 from utils.activation_funcs import leaky_relu
 from utils.util import minibatches, Progbar
 from data.dataset_builder import Dataset
 from scipy.misc import imsave
 from tensorflow.examples.tutorials.mnist import input_data
-
-mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
-
 
 class DC_WGAN():
     """ DCGAN w/ Improved WGAN Loss
@@ -374,9 +371,6 @@ class Generator(ModularGenerator):
         params['fc_dim'] = [1024]
         params['fc_activation_funcs'] = [tf.nn.relu] * params['fc_layers']
 
-        # Normalize Input Vector?
-        params['normalize_input'] = False
-
         # Embedding Layer (FC -> Conv Intermediary Layer)
         params['dim'] = 64
         params['embed_channels'] = params['dim'] * 4
@@ -396,41 +390,8 @@ class Generator(ModularGenerator):
         # Initialize the Model
         super().__init__(params)
 
-    def add_placeholders(self):
-        pass
 
-    def add_loss_op(self, **kwargs):
-        pass
-
-    def add_training_op(self, loss):
-        pass
-
-    def build(self):
-        pass
-
-    def create_feed_dict(self, inputs_batch, outputs_batch=None, **kwargs):
-        pass
-
-    def train_on_batch(self, sess, inputs_batch, outputs_batch, get_loss=False):
-        pass
-
-    def predict_on_batch(self, sess, inputs_batch):
-        pass
-
-    def eval_on_batch(self, sess, inputs_batch, outputs_batch):
-        pass
-
-    def eval_batches(self, sess, eval_set, num_batches):
-        pass
-
-    def run_epoch(self, sess, train_examples, dev_set, logfile=None):
-        pass
-
-    def fit(self, sess, saver, train_examples, dev_set):
-        pass
-
-
-class GaussianDiscriminator(ModularModel):
+class GaussianDiscriminator(ModularDiscriminator):
     """
     Input: N x 32 x 32 x 1
     Output: N x 1
@@ -494,7 +455,7 @@ class GaussianDiscriminator(ModularModel):
         pass
 
 
-class ImageDiscriminator(ModularModel):
+class ImageDiscriminator(ModularDiscriminator):
     """
     Input: N x 32 x 32 x 1
     Output: N x 1
@@ -517,7 +478,7 @@ class ImageDiscriminator(ModularModel):
         params['in_conv_filters'] = [params['dim'], params['dim'] * 2, params['dim'] * 4]
         params['in_conv_dim'] = [5, 5, 5]
         params['in_conv_stride'] = [2, 2, 2]
-        params['in_conv_activation_func'] = [leaky_relu, leaky_relu, leaky_relu]  # ToDo
+        params['in_conv_activation_func'] = [leaky_relu, leaky_relu, leaky_relu]
         params["fc_layers"] = 3
         params["fc_dim"] = [1024, 1024, 1]
         params["fc_activation_funcs"] = [leaky_relu, leaky_relu, None]
@@ -528,25 +489,22 @@ class ImageDiscriminator(ModularModel):
         # Initialize the Model
         super().__init__(params)
 
-    def add_placeholders(self):
-        pass
-
-    def create_feed_dict(self, inputs_batch, outputs_batch=None, **kwargs):
-        pass
-
     def add_prediction_op(self, input_logits=None, reuse=None, **kwargs):
         with tf.variable_scope(self.config.model_name, reuse=reuse):
             # prev_output = self.add_in_convolution(input_logits, maxpooling=False)
             prev_output = self.add_in_fc(tf.contrib.layers.flatten(input_logits))
             return prev_output
 
-    def add_loss_op(self, loss_params=None):
+    def add_placeholders(self):
+        pass
+
+    def add_loss_op(self, **kwargs):
         pass
 
     def add_training_op(self, loss):
         pass
 
-    def build(self):
+    def create_feed_dict(self, inputs_batch, outputs_batch=None, **kwargs):
         pass
 
     def train_on_batch(self, sess, inputs_batch, outputs_batch, get_loss=False):
@@ -567,17 +525,15 @@ class ImageDiscriminator(ModularModel):
     def fit(self, sess, saver, train_examples, dev_set):
         pass
 
+    def build(self):
+        pass
+
 
 def preprocess_imgs(imgs):
     return imgs
-    # processed_imgs = tf.map_fn(lambda img: tf.image.per_image_standardization(img), imgs)
-    # return processed_imgs
-
 
 if __name__ == '__main__':
-    # dataset = Dataset((32, 32))
-    # dataset.read_sets("data/joint_pairs_32")
-
+    mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
     m = DC_WGAN()
     m.build()
 

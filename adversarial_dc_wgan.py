@@ -28,10 +28,10 @@ class DC_WGAN():
         """
         # Learning Parameters
         self.generator_epochs = 200000
-        self.discr_epochs = 5
-        self.gen_lr = 1e-6
-        self.di_lr = 1e-6
-        self.dg_lr = 1e-6
+        self.discr_epochs = 1
+        self.gen_lr = 1e-5
+        self.di_lr = 1e-5
+        self.dg_lr = 1e-5
         self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
@@ -39,7 +39,7 @@ class DC_WGAN():
         self.beta1 = 0.5
         self.beta2 = 0.9
         self.lambda_cost = 10
-        self.gans_image_lambda = 1
+        self.gans_image_lambda = 0
         self.gans_gaussian_lambda = 1
         self.gans_reconstruction_lambda = 1
 
@@ -52,7 +52,7 @@ class DC_WGAN():
         self.im_width = 48
         self.im_height = 48
         self.im_channels = 1
-        self.style_dim = 50
+        self.style_dim = 10
         self.num_demos = 10
         self.num_emotions = 10
         self.imsave_scale_factor = 1
@@ -100,7 +100,7 @@ class DC_WGAN():
         # Generator Cost
         gen_image_cost = -tf.reduce_mean(image_logits_fake)
         gen_gaussian_cost = -tf.reduce_mean(gaussian_logits_fake)
-        gen_reconstruction_cost = tf.reduce_mean(real_imgs - generated_imgs) ** 2 / 2
+        gen_reconstruction_cost = tf.reduce_mean((real_imgs - generated_imgs) ** 2) / 2
         g_cost = (
             self.gans_image_lambda * gen_image_cost +
             self.gans_gaussian_lambda * gen_gaussian_cost +
@@ -224,12 +224,12 @@ class DC_WGAN():
                     print("Gen Epoch {} - Discriminator Epoch {:} out of {:}".format(gen_epoch + 1,
                                                                                      discr_epoch + 1,
                                                                                      self.discr_epochs))
-                    discr_tf_ops = [self.dg_train_step, self.di_train_step]
+                    discr_tf_ops = [self.dg_train_step]#, self.di_train_step]
                     discr_dev_loss = self.run_epoch(discr_tf_ops,
                                                     [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
                                                     sess,
                                                     train_examples, dev_set, self.batch_size, logfile)
-                self.demo(gaussians_for_demo, gen_epoch, sess)
+                self.demo(gaussians_for_demo, train_examples[0][gen_epoch], train_examples[1][gen_epoch], gen_epoch, sess)
 
     def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
         # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
@@ -334,9 +334,11 @@ class DC_WGAN():
             imsave(os.path.join(path_name, "s{}_e{}.png".format(int(style), int(emotion))), np.squeeze(outputs[i]))
         imsave(os.path.join(path_name, "image_in.png"), np.squeeze(demo_image))
         feed = {
-            self.image_in: 
+            self.image_in: np.expand_dims(demo_image, 0),
+            self.emotion_label: [demo_emotion]
         }
         decoded = self.pred_on_image_batch(feed, sess)
+        imsave(os.path.join(path_name, "image_out.png"), np.squeeze(decoded))
 
     def restore_from_checkpoint(self, sess, saver):
         save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
@@ -379,7 +381,7 @@ class Generator(ModularGenerator):
         # Output Deconvolution (Transpose Convolution) or Unconvolution Layers
         params["use_transpose"] = True
         params['out_conv_layers'] = 3
-        params['out_conv_filters'] = [params['dim'] * 2, params['dim'], 1]
+        params['out_conv_filters'] = [params['dim']*4, params['dim']*2, 1]
         params['out_conv_dim'] = [5, 5, 5]
         params['out_conv_stride'] = [2, 2, 2]
         params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, tf.nn.sigmoid]
@@ -538,11 +540,11 @@ if __name__ == '__main__':
     m.build()
 
     train_examples = [
-        np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
-        mnist.train.labels]
+        np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[:1000],
+        mnist.train.labels[:1000]]
     dev_examples = [
-        np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
-        mnist.validation.labels]
+        np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant')[:1000],
+        mnist.validation.labels[:1000]]
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())

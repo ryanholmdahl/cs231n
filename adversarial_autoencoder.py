@@ -105,8 +105,6 @@ class ModularGenerator(Model):
                 activation_func = self.config.out_conv_activation_func[i]
             except AttributeError:
                 activation_func = tf.nn.relu
-            if i > 0:
-                prev_output = activation_func(prev_output)
 
             # Retrieve Filers and Apply Conv 2D Transpose (Deconvolution)
             in_filters = self.config.out_conv_filters[i - 1] if i > 0 else prev_output.get_shape()[3]
@@ -120,6 +118,7 @@ class ModularGenerator(Model):
             prev_output = tf.nn.conv2d_transpose(prev_output, W, out_shape,
                                                  [1, self.config.out_conv_stride[i], self.config.out_conv_stride[i], 1],
                                                  padding='SAME')
+            prev_output = activation_func(prev_output)
         return prev_output
 
     def add_out_fc(self, prev_output, ):

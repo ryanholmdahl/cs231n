@@ -140,23 +140,22 @@ class ModularGenerator(Model):
                 prev_output = self.add_in_convolution(input_logits)
                 prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
                 prev_output = tf.layers.dense(prev_output, self.config.style_dim,
-                                                   kernel_initializer=tf.contrib.layers.xavier_initializer(),
-                                                   name="style")
+                                              kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                                              name="style")
                 self.image_style = prev_output
             else:
                 prev_output = style_input
             if style_concat_input is not None:
                 prev_output = tf.concat((prev_output, style_concat_input), axis=1)
-            else:
-                prev_output = self.image_style
-            if self.config.out_conv_layers > 0:
-                prev_output = self.add_fixed_size_embed(prev_output)
-                if self.config.use_transpose:
-                    result = self.add_out_deconvolution(prev_output)
+            with tf.variable_scope("decoder") as subscope:
+                if self.config.out_conv_layers > 0:
+                    prev_output = self.add_fixed_size_embed(prev_output)
+                    if self.config.use_transpose:
+                        result = self.add_out_deconvolution(prev_output)
+                    else:
+                        result = self.add_out_unconvolution(prev_output)
                 else:
-                    result = self.add_out_unconvolution(prev_output)
-            else:
-                result = self.add_out_fc(prev_output)
+                    result = self.add_out_fc(prev_output)
             return result
 
     def add_placeholders(self):

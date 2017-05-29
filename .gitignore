@@ -17,3 +17,5 @@ toy_pairs
 /data/colorferet
 *.zip
 recon_outputs
+recon_dual_outputs
+recon_dual_weakim_outputs

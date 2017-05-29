@@ -32,7 +32,7 @@ class DC_WGAN():
         self.discr_epochs = 5
         self.gen_lr = 1e-5
         self.di_lr = 1e-5
-        self.dg_lr = 1e-5
+        self.dg_lr = 1e-5 #unsure if 5 or 6 here...
         self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
@@ -40,14 +40,14 @@ class DC_WGAN():
         self.beta1 = 0.5
         self.beta2 = 0.9
         self.lambda_cost = 10
-        self.gans_image_lambda = 0
+        self.gans_image_lambda = 0.01
         self.gans_gaussian_lambda = 1
         self.gans_reconstruction_lambda = 1
 
         # Logging Params
         self.ckpt_path = "ckpt"
         self.log_path = "log"
-        self.recon_path = "recon_outputs"
+        self.recon_path = "recon_dual_weakim_outputs"
 
         # Model Parameters
         self.im_width = 28
@@ -97,15 +97,17 @@ class DC_WGAN():
         return dg_solver, di_solver, g_solver
 
     def loss(self, image_logits_real, image_logits_fake, gaussian_logits_real, gaussian_logits_fake, real_imgs,
-             generated_imgs, real_gaussians, fake_gaussians):
+             generated_imgs, real_gaussians, fake_gaussians, emotions):
         # Generator Cost
         gen_image_cost = -tf.reduce_mean(image_logits_fake)
         gen_gaussian_cost = -tf.reduce_mean(gaussian_logits_fake)
         gen_reconstruction_cost = tf.reduce_mean((real_imgs - generated_imgs) ** 2) / 2
         g_cost = (
-            self.gans_image_lambda * gen_image_cost +
             self.gans_gaussian_lambda * gen_gaussian_cost +
             self.gans_reconstruction_lambda * gen_reconstruction_cost
+        )
+        gdec_cost = (
+            self.gans_image_lambda * gen_image_cost
         )
 
         # Discriminator Cost
@@ -121,7 +123,8 @@ class DC_WGAN():
         image_interpolates = real_imgs + (image_alpha * image_differences)
         print(image_interpolates.get_shape())
         interpolate_imgs = self.image_discriminator.add_prediction_op(input_logits=image_interpolates,
-                                                                      data_type='interpolates', reuse=True)
+                                                                      linear_inputs=emotions, data_type='interpolates',
+                                                                      reuse=True)
         image_gradients = tf.gradients(interpolate_imgs, [image_interpolates])[0]
         image_slopes = tf.sqrt(tf.reduce_sum(tf.square(image_gradients), reduction_indices=[1]))
         image_gradient_penalty = tf.reduce_mean((image_slopes - 1.) ** 2)
@@ -140,7 +143,7 @@ class DC_WGAN():
         gaussian_slopes = tf.sqrt(tf.reduce_sum(tf.square(gaussian_gradients), reduction_indices=[1]))
         gaussian_gradient_penalty = tf.reduce_mean((gaussian_slopes - 1.) ** 2)
         discr_gaussian_cost += self.lambda_cost * gaussian_gradient_penalty
-        return discr_gaussian_cost, discr_image_cost, g_cost, gen_reconstruction_cost
+        return discr_gaussian_cost, discr_image_cost, g_cost, gdec_cost, gen_reconstruction_cost
 
     def build(self):
         tf.reset_default_graph()
@@ -161,11 +164,13 @@ class DC_WGAN():
 
         with tf.variable_scope("") as scope:
             # scale images to be -1 to 1
-            self.image_logits_real = self.image_discriminator.add_prediction_op(preprocess_imgs(self.image_in))
+            self.image_logits_real = self.image_discriminator.add_prediction_op(
+                input_logits=preprocess_imgs(self.image_in), linear_inputs=self.emotion_label)
 
             # Re-use discriminator weights on new inputs 
             scope.reuse_variables()
-            self.image_logits_fake = self.image_discriminator.add_prediction_op(self.gen_images_autoencode)
+            self.image_logits_fake = self.image_discriminator.add_prediction_op(
+                input_logits=self.gen_images_autoencode, linear_inputs=self.emotion_label)
 
         with tf.variable_scope("") as scope:
             # scale images to be -1 to 1
@@ -180,21 +185,26 @@ class DC_WGAN():
                                          self.gaussian_discriminator.config.model_name)
         self.di_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.image_discriminator.config.model_name)
         self.g_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.generator.config.model_name)
+        self.gdec_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                           self.generator.config.model_name + "/decoder")
 
         # get our solvers
         self.dg_solver, self.di_solver, self.g_solver = self.get_solvers()
 
         # get our loss
-        self.dg_loss, self.di_loss, self.g_loss, self.reconstruction_loss = self.loss(self.image_logits_real,
-                                                                                      self.image_logits_fake,
-                                                                                      self.gaussian_logits_real,
-                                                                                      self.gaussian_logits_fake,
-                                                                                      self.image_in,
-                                                                                      self.gen_images_autoencode,
-                                                                                      self.gaussian_in, self.gen_styles)
+        self.dg_loss, self.di_loss, self.g_loss, self.gdec_loss, self.reconstruction_loss = self.loss(
+            self.image_logits_real,
+            self.image_logits_fake,
+            self.gaussian_logits_real,
+            self.gaussian_logits_fake,
+            self.image_in,
+            self.gen_images_autoencode,
+            self.gaussian_in, self.gen_styles,
+            self.emotion_label)
 
         # setup training steps
         self.g_train_step = self.g_solver.minimize(self.g_loss, var_list=self.g_vars)
+        self.gdec_train_step = self.g_solver.minimize(self.gdec_loss, var_list=self.gdec_vars)
         self.di_train_step = self.di_solver.minimize(self.di_loss, var_list=self.di_vars)
         self.dg_train_step = self.dg_solver.minimize(self.dg_loss, var_list=self.dg_vars)
         self.dg_extra_step = tf.get_collection(tf.GraphKeys.UPDATE_OPS, self.gaussian_discriminator.config.model_name)
@@ -209,7 +219,8 @@ class DC_WGAN():
             for gen_epoch in range(self.generator_epochs):
                 print("Generator Epoch {:} out of {:}".format(gen_epoch + 1, self.generator_epochs))
                 logfile.write(str(gen_epoch + 1))
-                tf_ops = ([self.dg_train_step] * self.discr_epochs) + [self.g_train_step]
+                tf_ops = ([self.dg_train_step, self.di_train_step] * self.discr_epochs) + [self.g_train_step,
+                                                                                           self.gdec_train_step]
                 self.run_epoch(tf_ops, [(self.reconstruction_loss, "reconstruction"),
                                         (self.g_loss, "generator"), (self.dg_loss, "Gaussian"),
                                         (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
@@ -375,8 +386,8 @@ class Generator(ModularGenerator):
         params['in_conv_layers'] = 0
 
         # Input FC Layers
-        params['fc_layers'] = 1
-        params['fc_dim'] = [1024]
+        params['fc_layers'] = 2
+        params['fc_dim'] = [1024, 1024]
         params['fc_activation_funcs'] = [tf.nn.relu] * params['fc_layers']
 
         # Embedding Layer (FC -> Conv Intermediary Layer)
@@ -388,7 +399,7 @@ class Generator(ModularGenerator):
         params["use_transpose"] = True
         params['out_conv_layers'] = 2
         params['out_conv_filters'] = [params['dim'] * 2, 1]
-        params['out_conv_dim'] = [5, 5]
+        params['out_conv_dim'] = [3, 3]
         params['out_conv_stride'] = [2, 2]
         params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.sigmoid]
 
@@ -497,10 +508,12 @@ class ImageDiscriminator(ModularDiscriminator):
         # Initialize the Model
         super().__init__(params)
 
-    def add_prediction_op(self, input_logits=None, reuse=None, **kwargs):
+    def add_prediction_op(self, input_logits=None, linear_inputs=None, reuse=None, **kwargs):
         with tf.variable_scope(self.config.model_name, reuse=reuse):
             conv_output = self.add_in_convolution(input_logits, maxpooling=False)
-            prev_output = self.add_in_fc(tf.contrib.layers.flatten(conv_output))
+            prev_output = tf.contrib.layers.flatten(conv_output)
+            prev_output = tf.concat((prev_output, linear_inputs), axis=1)
+            prev_output = self.add_in_fc(tf.contrib.layers.flatten(prev_output))
             return prev_output
 
     def add_placeholders(self):

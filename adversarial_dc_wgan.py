@@ -490,6 +490,7 @@ class ImageDiscriminator(ModularDiscriminator):
         params["fc_layers"] = 3
         params["fc_dim"] = [1024, 1024, 1]
         params["fc_activation_funcs"] = [leaky_relu, leaky_relu, None]
+        params['fc_layers_dropout'] = [0.5, 0.5]
 
         # Model Info Params
         params["model_name"] = "image_discriminator"

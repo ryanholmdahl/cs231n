@@ -44,6 +44,13 @@ class ModularDiscriminator(Model):
             prev_output = tf.layers.dense(prev_output, self.config.fc_dim[i], activation=activation_func,
                                           kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                           name=layer_name)
+        if i < self.config.fc_layers - 1:
+            try:
+                dropout_rate = self.config.fc_layers_dropout[i]
+                prev_output = tf.layers.dropout(
+                    inputs=prev_output, rate=dropout_rate, training=tf.contrib.learn.ModeKeys.TRAIN)
+            except AttributeError:
+                pass
         try:
             if self.config.normalize_input:
                 prev_output = tf.layers.batch_normalization(prev_output, training=True)

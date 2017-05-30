@@ -28,7 +28,7 @@ class DC_WGAN():
         """ Initialize the DC_WGAN.
         """
         # Learning Parameters
-        self.generator_epochs = 200000
+        self.generator_epochs = 125
         self.discr_epochs = 5
         self.gen_lr = 1e-5
         self.di_lr = 1e-5
@@ -40,8 +40,8 @@ class DC_WGAN():
         self.beta1 = 0.5
         self.beta2 = 0.9
         self.lambda_cost = 10
-        self.gans_image_lambda = 0.01
-        self.gans_gaussian_lambda = 0.1
+        self.gans_image_lambda = 0.005
+        self.gans_gaussian_lambda = 0.05
         self.gans_reconstruction_lambda = 1
 
         # Logging Params

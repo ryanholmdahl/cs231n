@@ -45,6 +45,7 @@ class ModularGenerator(Model):
             prev_output = tf.layers.dense(prev_output, self.config.fc_dim[i], activation=activation_func,
                                           kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                           name=layer_name)
+            prev_output = tf.layers.dropout(prev_output, self.config.fc_dropout[i])
         return prev_output
 
     def add_fixed_size_embed(self, prev_output):

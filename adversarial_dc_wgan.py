@@ -28,8 +28,10 @@ class DC_WGAN():
         """ Initialize the DC_WGAN.
         """
         # Learning Parameters
-        self.generator_epochs = 125
         self.discr_epochs = 5
+        self.generator_epochs = 200000
+        self.im_epochs = 1
+        self.gaussian_epochs = 5
         self.gen_lr = 1e-5
         self.di_lr = 1e-5
         self.dg_lr = 1e-5  # unsure if 5 or 6 here...
@@ -47,8 +49,8 @@ class DC_WGAN():
         # Logging Params
         self.ckpt_path = "ckpt"
         self.log_path = "log"
-        self.recon_path = "recon_dual_weakim_weakgauss_outputs"
-        self.model_name = "001image_01gauss_5train_gaussianlabels_decoder"
+        self.recon_path = "outputs/001image_01gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout"
+        self.model_name = "001image_01gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout"
 
         # Model Parameters
         self.im_width = 28
@@ -223,8 +225,9 @@ class DC_WGAN():
             for gen_epoch in range(self.generator_epochs):
                 print("Generator Epoch {:} out of {:}".format(gen_epoch + 1, self.generator_epochs))
                 logfile.write(str(gen_epoch + 1))
-                tf_ops = ([self.dg_train_step, self.di_train_step] * self.discr_epochs) + [self.g_train_step,
-                                                                                           self.gdec_train_step]
+                tf_ops = ([self.dg_train_step] * self.gaussian_epochs) + ([self.di_train_step] * self.im_epochs) + [
+                    self.g_train_step,
+                    self.gdec_train_step]
                 self.run_epoch(tf_ops, [(self.reconstruction_loss, "reconstruction"),
                                         (self.g_loss, "generator"), (self.dg_loss, "Gaussian"),
                                         (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
@@ -388,7 +391,7 @@ class Generator(ModularGenerator):
 
     def __init__(self, params):
         # Regularization
-        params["fc_dropout"] = 0
+        params["fc_dropout"] = [0, 0]
 
         # Input Convolution Layers
         params['in_conv_layers'] = 0
@@ -430,7 +433,7 @@ class GaussianDiscriminator(ModularDiscriminator):
 
     def __init__(self, params):
         # Regularization
-        params["fc_dropout"] = 0
+        params["fc_dropout"] = [0, 0, 0]
 
         # Input Convolution Layers
         params["fc_layers"] = 3
@@ -506,10 +509,10 @@ class ImageDiscriminator(ModularDiscriminator):
         params['in_conv_dim'] = [5, 5, 5]
         params['in_conv_stride'] = [2, 2, 2]
         params['in_conv_activation_func'] = [leaky_relu, leaky_relu, leaky_relu]
-        params["fc_layers"] = 3
-        params["fc_dim"] = [1024, 1024, 1]
-        params["fc_activation_funcs"] = [leaky_relu, leaky_relu, None]
-        params['fc_layers_dropout'] = [0.5, 0.5]
+        params["fc_layers"] = 2
+        params["fc_dim"] = [1024, 1]
+        params["fc_activation_funcs"] = [leaky_relu, None]
+        params['fc_layers_dropout'] = [0.5, 0]
 
         # Model Info Params
         params["model_name"] = "image_discriminator"

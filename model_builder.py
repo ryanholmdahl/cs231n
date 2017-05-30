@@ -20,7 +20,7 @@ class ModularDiscriminator(Model):
             if self.config.model_name != '':
                 layer_name = '{}.{}'.format(self.config.model_name, layer_name)
             try:
-                activation_func = self.config.fc_activation_funcs[i]
+                activation_func = self.config.in_conv_activation_funcs[i]
             except AttributeError:
                 activation_func = tf.nn.relu
             prev_output = tf.layers.conv2d(prev_output, self.config.in_conv_filters[i], self.config.in_conv_dim[i],
@@ -44,18 +44,18 @@ class ModularDiscriminator(Model):
             prev_output = tf.layers.dense(prev_output, self.config.fc_dim[i], activation=activation_func,
                                           kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                           name=layer_name)
-        if i < self.config.fc_layers - 1:
+            if i < self.config.fc_layers - 1:
+                try:
+                    dropout_rate = self.config.fc_layers_dropout[i]
+                    prev_output = tf.layers.dropout(
+                        inputs=prev_output, rate=dropout_rate)
+                except AttributeError:
+                    pass
             try:
-                dropout_rate = self.config.fc_layers_dropout[i]
-                prev_output = tf.layers.dropout(
-                    inputs=prev_output, rate=dropout_rate, training=tf.contrib.learn.ModeKeys.TRAIN)
+                if self.config.normalize_input:
+                    prev_output = tf.layers.batch_normalization(prev_output, training=True)
             except AttributeError:
                 pass
-        try:
-            if self.config.normalize_input:
-                prev_output = tf.layers.batch_normalization(prev_output, training=True)
-        except AttributeError:
-            pass
         return prev_output
 
     def add_fixed_size_embed(self, prev_output):

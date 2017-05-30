@@ -32,7 +32,7 @@ class DC_WGAN():
         self.discr_epochs = 5
         self.gen_lr = 1e-5
         self.di_lr = 1e-5
-        self.dg_lr = 1e-5 #unsure if 5 or 6 here...
+        self.dg_lr = 1e-5  # unsure if 5 or 6 here...
         self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
@@ -41,13 +41,14 @@ class DC_WGAN():
         self.beta2 = 0.9
         self.lambda_cost = 10
         self.gans_image_lambda = 0.01
-        self.gans_gaussian_lambda = 1
+        self.gans_gaussian_lambda = 0.1
         self.gans_reconstruction_lambda = 1
 
         # Logging Params
         self.ckpt_path = "ckpt"
         self.log_path = "log"
-        self.recon_path = "recon_dual_weakim_outputs"
+        self.recon_path = "recon_dual_weakim_weakgauss_outputs"
+        self.model_name = "001image_01gauss_5train_gaussianlabels_decoder"
 
         # Model Parameters
         self.im_width = 28
@@ -137,8 +138,9 @@ class DC_WGAN():
         )
         gaussian_differences = fake_gaussians - real_gaussians
         gaussian_interpolates = real_gaussians + (gaussian_alpha * gaussian_differences)
-        interpolate_gauss = self.gaussian_discriminator.add_prediction_op(input_logits=gaussian_interpolates,
-                                                                          data_type='interpolates', reuse=True)
+        interpolate_gauss = self.gaussian_discriminator.add_prediction_op(
+            input_logits=tf.concat((gaussian_interpolates, emotions), axis=1),
+            data_type='interpolates', reuse=True)
         gaussian_gradients = tf.gradients(interpolate_gauss, [gaussian_interpolates])[0]
         gaussian_slopes = tf.sqrt(tf.reduce_sum(tf.square(gaussian_gradients), reduction_indices=[1]))
         gaussian_gradient_penalty = tf.reduce_mean((gaussian_slopes - 1.) ** 2)
@@ -174,11 +176,13 @@ class DC_WGAN():
 
         with tf.variable_scope("") as scope:
             # scale images to be -1 to 1
-            self.gaussian_logits_real = self.gaussian_discriminator.add_prediction_op(self.gaussian_in)
+            self.gaussian_logits_real = self.gaussian_discriminator.add_prediction_op(
+                tf.concat((self.gaussian_in, self.emotion_label), axis=1))
 
             # Re-use discriminator weights on new inputs
             scope.reuse_variables()
-            self.gaussian_logits_fake = self.gaussian_discriminator.add_prediction_op(self.gen_styles)
+            self.gaussian_logits_fake = self.gaussian_discriminator.add_prediction_op(
+                tf.concat((self.gen_styles, self.emotion_label), axis=1))
 
         # Get the list of variables for the discriminator and generator
         self.dg_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
@@ -225,6 +229,10 @@ class DC_WGAN():
                                         (self.g_loss, "generator"), (self.dg_loss, "Gaussian"),
                                         (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
                                logfile)
+                if gen_epoch % 10 == 0:
+                    save_path = os.path.join(self.ckpt_path, self.model_name)
+                    print("Saving model in {}".format(save_path))
+                    saver.save(sess, save_path)
                 # if gen_epoch > 0:
                 #     gen_tf_ops = self.g_train_step
                 #     gen_dev_loss = self.run_epoch(gen_tf_ops, [(self.reconstruction_loss, "reconstruction"),

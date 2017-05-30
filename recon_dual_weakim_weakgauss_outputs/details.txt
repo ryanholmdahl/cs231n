@@ -1,0 +1,4 @@
+0.01 image, 0.1 gauss
+1e-5 training
+gaussian takes label in
+decoder only

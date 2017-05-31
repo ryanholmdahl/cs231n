@@ -41,15 +41,18 @@ class DC_WGAN():
         self.beta1 = 0.5
         self.beta2 = 0.9
         self.lambda_cost = 10
-        self.gans_image_lambda = 0.01
-        self.gans_gaussian_lambda = 0.1
+        self.gans_image_lambda = 0.002
+        self.gans_gaussian_lambda = 0.01
         self.gans_reconstruction_lambda = 1
+        self.im_train_start = 300
+        self.im_prop_start = 302
 
         # Logging Params
-        self.ckpt_path = "ckpt"
+        self.ckpt_path = "ckpt\\mnist_final"
         self.log_path = "log"
-        self.recon_path = "outputs/001image_01gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout"
-        self.model_name = "001image_01gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout"
+        self.summaries_dir = "summaries"
+        self.recon_path = "outputs/final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start300_prop302"
+        self.model_name = "final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start300_prop302"
 
         # Model Parameters
         self.im_width = 28
@@ -59,6 +62,7 @@ class DC_WGAN():
         self.num_demos = 10
         self.num_emotions = 10
         self.imsave_scale_factor = 1
+        self.train_iter = 0
 
         params = {}
         params['im_width'] = self.im_width
@@ -111,10 +115,15 @@ class DC_WGAN():
         gdec_cost = (
             self.gans_image_lambda * gen_image_cost
         )
+        tf.summary.scalar("generator image discriminator cost", gen_image_cost)
+        tf.summary.scalar("generator Gaussian discriminator cost", gen_gaussian_cost)
+        tf.summary.scalar("generator reconstruction cost", gen_reconstruction_cost)
 
         # Discriminator Cost
         discr_image_cost = tf.reduce_mean(image_logits_fake) - tf.reduce_mean(image_logits_real)
         discr_gaussian_cost = tf.reduce_mean(gaussian_logits_fake) - tf.reduce_mean(gaussian_logits_real)
+        tf.summary.scalar("image discriminator cost prepenalty", discr_image_cost)
+        tf.summary.scalar("Gaussian discriminator cost prepenalty", discr_gaussian_cost)
 
         image_alpha = tf.random_uniform(
             shape=tf.shape(real_imgs),
@@ -146,6 +155,8 @@ class DC_WGAN():
         gaussian_slopes = tf.sqrt(tf.reduce_sum(tf.square(gaussian_gradients), reduction_indices=[1]))
         gaussian_gradient_penalty = tf.reduce_mean((gaussian_slopes - 1.) ** 2)
         discr_gaussian_cost += self.lambda_cost * gaussian_gradient_penalty
+        tf.summary.scalar("image discriminator cost postpenalty", discr_image_cost)
+        tf.summary.scalar("Gaussian discriminator cost postpenalty", discr_gaussian_cost)
         return discr_gaussian_cost, discr_image_cost, g_cost, gdec_cost, gen_reconstruction_cost
 
     def build(self):
@@ -154,7 +165,7 @@ class DC_WGAN():
         self.image_in, self.emotion_label, self.gaussian_in, self.style_in, self.global_step = self.add_place_holders()
         with tf.variable_scope("") as scope:
             self.gen_images_autoencode = tf.reshape(
-                self.generator.add_prediction_op(input_logits=preprocess_imgs(self.image_in),
+                self.generator.add_prediction_op(input_logits=self.image_in,
                                                  style_concat_input=self.emotion_label),
                 shape=[-1, self.im_height, self.im_width, self.im_channels])
 
@@ -173,7 +184,7 @@ class DC_WGAN():
             # Re-use discriminator weights on new inputs 
             scope.reuse_variables()
             self.image_logits_fake = self.image_discriminator.add_prediction_op(
-                input_logits=self.gen_images_autoencode, linear_inputs=self.emotion_label)
+                input_logits=preprocess_imgs(self.gen_images_autoencode), linear_inputs=self.emotion_label)
 
         with tf.variable_scope("") as scope:
             # scale images to be -1 to 1
@@ -221,18 +232,20 @@ class DC_WGAN():
             best_gen_dev_loss = float('inf')
             best_discr_dev_loss = float('inf')
             gaussians_for_demo = np.random.normal(size=(self.num_demos, self.style_dim))
+            self.merged_summaries = tf.summary.merge_all()
+            self.train_writer = tf.summary.FileWriter(self.summaries_dir + "/train", sess.graph)
             for gen_epoch in range(self.generator_epochs):
                 print("Generator Epoch {:} out of {:}".format(gen_epoch + 1, self.generator_epochs))
                 logfile.write(str(gen_epoch + 1))
-                tf_ops = ([self.dg_train_step] * self.gaussian_epochs) + ([self.di_train_step] * self.im_epochs) + [
-                    self.g_train_step,
-                    self.gdec_train_step]
+                tf_ops = ([self.dg_train_step] * self.gaussian_epochs) + (
+                    [self.di_train_step] * self.im_epochs * (1 if gen_epoch > self.im_train_start else 0)) + [
+                             self.g_train_step] + [self.gdec_train_step] * (1 if gen_epoch > self.im_prop_start else 0)
                 self.run_epoch(tf_ops, [(self.reconstruction_loss, "reconstruction"),
                                         (self.g_loss, "generator"), (self.dg_loss, "Gaussian"),
                                         (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
                                logfile)
                 if gen_epoch % 10 == 0:
-                    save_path = os.path.join(self.ckpt_path, self.model_name)
+                    save_path = os.path.join(self.ckpt_path, self.model_name+"_"+str(gen_epoch))
                     print("Saving model in {}".format(save_path))
                     saver.save(sess, save_path)
                 # if gen_epoch > 0:
@@ -299,6 +312,8 @@ class DC_WGAN():
         #         return loss
         # else:
         sess.run(tf_ops, feed_dict=feed)
+        self.train_writer.add_summary(sess.run(self.merged_summaries, feed_dict=feed), self.train_iter)
+        self.train_iter += 1
 
     def eval_batches(self, loss_fn, sess, eval_set, num_batches):
         """Evaluate the loss on a number of given minibatches of a dataset.
@@ -505,7 +520,7 @@ class ImageDiscriminator(ModularDiscriminator):
         params['dim'] = 64
         params['in_conv_layers'] = 3
         params['in_conv_filters'] = [params['dim'], params['dim'] * 2, params['dim'] * 4]
-        params['in_conv_dim'] = [5, 5, 5]
+        params['in_conv_dim'] = [3, 3, 3]
         params['in_conv_stride'] = [2, 2, 2]
         params['in_conv_activation_func'] = [leaky_relu, leaky_relu, leaky_relu]
         params["fc_layers"] = 2
@@ -562,7 +577,7 @@ class ImageDiscriminator(ModularDiscriminator):
 
 
 def preprocess_imgs(imgs):
-    return imgs
+    return imgs + tf.random_normal(tf.shape(imgs), stddev=0.01)
 
 
 if __name__ == '__main__':

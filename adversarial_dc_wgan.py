@@ -44,15 +44,15 @@ class DC_WGAN():
         self.gans_image_lambda = 0.002
         self.gans_gaussian_lambda = 0.01
         self.gans_reconstruction_lambda = 1
-        self.im_train_start = 300
-        self.im_prop_start = 302
+        self.im_train_start = 1000
+        self.im_prop_start = 1002
 
         # Logging Params
-        self.ckpt_path = "ckpt\\mnist_final"
+        self.ckpt_path = "ckpt\\mnist_no_im_final"
         self.log_path = "log"
-        self.summaries_dir = "summaries"
-        self.recon_path = "outputs/final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start300_prop302"
-        self.model_name = "final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start300_prop302"
+        self.summaries_dir = "noim_summaries"
+        self.recon_path = "outputs/final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start1000_prop1002"
+        self.model_name = "final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start1000_prop1002"
 
         # Model Parameters
         self.im_width = 28
@@ -245,7 +245,7 @@ class DC_WGAN():
                                         (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
                                logfile)
                 if gen_epoch % 10 == 0:
-                    save_path = os.path.join(self.ckpt_path, self.model_name+"_"+str(gen_epoch))
+                    save_path = os.path.join(self.ckpt_path, self.model_name + "_" + str(gen_epoch))
                     print("Saving model in {}".format(save_path))
                     saver.save(sess, save_path)
                 # if gen_epoch > 0:
@@ -268,8 +268,8 @@ class DC_WGAN():
                 #                                     [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
                 #                                     sess,
                 #                                     train_examples, dev_set, self.batch_size, logfile)
-                self.demo(gaussians_for_demo, train_examples[0][gen_epoch % 1000], train_examples[1][gen_epoch % 1000],
-                          gen_epoch, sess)
+                self.demo(gaussians_for_demo,
+                          gen_epoch, sess, train_examples[0][gen_epoch % 1000], train_examples[1][gen_epoch % 1000])
 
     def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
         # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
@@ -358,32 +358,37 @@ class DC_WGAN():
     def pred_on_image_batch(self, feed, sess):
         return sess.run(self.gen_images_autoencode, feed_dict=feed)
 
-    def demo(self, demo_gaussians, demo_image, demo_emotion, epoch, sess):
+    def demo(self, demo_gaussians, epoch, sess, demo_image=None, demo_emotion=None, output_path=None):
+        num_demos = demo_gaussians.shape[0]
         emotion_ints = np.arange(self.num_emotions)
         emotion_onehots = [[1 if i == t else 0 for t in range(self.num_emotions)] for i in emotion_ints]
-        emotion_repeated = np.repeat(emotion_onehots, self.num_demos, axis=0)
+        emotion_repeated = np.repeat(emotion_onehots, num_demos, axis=0)
         feed = {
             self.style_in: np.tile(demo_gaussians, (self.num_emotions, 1)),
             self.emotion_label: emotion_repeated
         }
         outputs = np.multiply(self.pred_on_style_batch(feed, sess), self.imsave_scale_factor)
-        path_name = os.path.join(self.recon_path, str(epoch))
+        if output_path is None:
+            path_name = os.path.join(self.recon_path, str(epoch))
+        else:
+            path_name = os.path.join(output_path, str(epoch))
         if not os.path.exists(path_name):
             os.makedirs(path_name)
         for i in range(len(outputs)):
-            emotion = i // self.num_demos
-            style = int(i - emotion * self.num_demos) % self.num_emotions
+            emotion = i // num_demos
+            style = int(i - emotion * num_demos) % self.num_emotions
             imsave(os.path.join(path_name, "s{}_e{}.png".format(int(style), int(emotion))), np.squeeze(outputs[i]))
-        imsave(os.path.join(path_name, "image_in.png"), np.squeeze(demo_image))
-        feed = {
-            self.image_in: np.expand_dims(demo_image, 0),
-            self.emotion_label: [demo_emotion]
-        }
-        decoded = self.pred_on_image_batch(feed, sess)
-        imsave(os.path.join(path_name, "image_out.png"), np.squeeze(decoded))
+        if demo_image is not None:
+            imsave(os.path.join(path_name, "image_in.png"), np.squeeze(demo_image))
+            feed = {
+                self.image_in: np.expand_dims(demo_image, 0),
+                self.emotion_label: [demo_emotion]
+            }
+            decoded = self.pred_on_image_batch(feed, sess)
+            imsave(os.path.join(path_name, "image_out.png"), np.squeeze(decoded))
 
-    def restore_from_checkpoint(self, sess, saver):
-        save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
+    def restore_from_checkpoint(self, sess, saver, epoch):
+        save_path = os.path.join(self.ckpt_path, self.model_name + "_" + str(epoch))
         saver.restore(sess, save_path)
 
 
@@ -603,5 +608,5 @@ if __name__ == '__main__':
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
         m.fit(sess, saver, train_examples, dev_examples)
-        # m.restore_from_checkpoint(sess, saver)
-        # m.generator.demo(sess, dataset.train_examples, dataset.dev_examples, 10)
+        #m.restore_from_checkpoint(sess, saver, 870)
+        #m.demo(np.random.normal(size=(10, m.style_dim)), 870, sess, output_path="more_gaussians")

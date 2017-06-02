@@ -20,4 +20,7 @@ recon_outputs
 recon_dual_outputs
 recon_dual_weakim_outputs
 recon_dual_weakim_weakgauss_outputs
+more_gaussians
+summaries
+noim_summaries
 outputs

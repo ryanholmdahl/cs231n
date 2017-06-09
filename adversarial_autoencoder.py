@@ -48,6 +48,26 @@ class ModularGenerator(Model):
             prev_output = tf.layers.dropout(prev_output, self.config.fc_dropout[i])
         return prev_output
 
+    def add_postembed_fc(self, prev_output):
+        for i in range(self.config.postembed_fc_layers):
+            # Create Layer Name
+            layer_name = 'pefc.{}'.format(i + 1)
+            if self.config.model_name != '':
+                layer_name = '{}.{}'.format(self.config.model_name, layer_name)
+
+            # Determine Activation Function
+            try:
+                activation_func = self.config.postembed_fc_activation_funcs[i]
+            except AttributeError:
+                activation_func = tf.nn.relu
+
+            # Construct Dense Fully Connected Layer
+            prev_output = tf.layers.dense(prev_output, self.config.postembed_fc_dim[i], activation=activation_func,
+                                          kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                                          name=layer_name)
+            prev_output = tf.layers.dropout(prev_output, self.config.postembed_fc_dropout[i])
+        return prev_output
+
     def add_fixed_size_embed(self, prev_output):
         # Create Layer Name
         layer_name = 'embed'
@@ -149,6 +169,7 @@ class ModularGenerator(Model):
             if style_concat_input is not None:
                 prev_output = tf.concat((prev_output, style_concat_input), axis=1)
             with tf.variable_scope("decoder") as subscope:
+                prev_output = self.add_postembed_fc(prev_output)
                 if self.config.out_conv_layers > 0:
                     prev_output = self.add_fixed_size_embed(prev_output)
                     if self.config.use_transpose:

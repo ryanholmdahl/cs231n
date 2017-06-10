@@ -23,6 +23,7 @@ class ModularGenerator(Model):
             prev_output = tf.layers.conv2d(prev_output, self.config.in_conv_filters[i], self.config.in_conv_dim[i],
                                            strides=self.config.in_conv_stride[i], activation=activation_func,
                                            kernel_initializer=tf.contrib.layers.xavier_initializer_conv2d(),
+                                           padding='SAME',
                                            name=layer_name)
             if maxpooling:
                 prev_output = tf.layers.max_pooling2d(prev_output, 2, strides=2)

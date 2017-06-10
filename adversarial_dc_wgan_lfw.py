@@ -15,7 +15,7 @@ from adversarial_autoencoder import ModularGenerator
 from model_builder import ModularDiscriminator
 from utils.activation_funcs import leaky_relu
 from utils.util import minibatches, Progbar
-from emotion_data.dataset_builder import Dataset
+from lfw.dataset_builder import Dataset
 from scipy.misc import imsave
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -43,7 +43,7 @@ class DC_WGAN():
         self.beta2 = 0.9
         self.lambda_cost = 10
         self.gans_image_lambda = 0.01
-        self.gans_gaussian_lambda = 1
+        self.gans_gaussian_lambda = 10
         self.gans_reconstruction_lambda = 1
         self.im_train_start = 500
         self.im_prop_start = 505
@@ -51,17 +51,17 @@ class DC_WGAN():
         # Logging Params
         self.ckpt_path = "ckpt"
         self.log_path = "log"
-        self.recon_path = "outputs/100style_001image_1gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_faces_tanh_inconv_500_505"
-        self.model_name = "100_style_001image_1gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_faces_tanh_inconv_500_505"
+        self.recon_path = "outputs/10style_001image_10gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanh_inconv_500_505"
+        self.model_name = "10style_001image_10gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanh_inconv_500_505"
         self.summaries_dir = "summaries"
 
         # Model Parameters
-        self.im_width = 48
-        self.im_height = 48
+        self.im_width = 32
+        self.im_height = 32
         self.im_channels = 1
-        self.style_dim = 100
-        self.num_demos = 10
-        self.num_emotions = 7
+        self.style_dim = 10
+        self.num_demos = 20
+        self.num_emotions = 1
         self.imsave_scale_factor = 1
         self.train_iter = 0
         self.cur_epoch = 0
@@ -359,6 +359,7 @@ class DC_WGAN():
         return sess.run(self.gen_images_autoencode, feed_dict=feed)
 
     def demo(self, demo_gaussians, demo_image, demo_emotion, epoch, sess):
+        print(demo_gaussians.shape)
         emotion_ints = np.arange(self.num_emotions)
         emotion_onehots = [[1 if i == t else 0 for t in range(self.num_emotions)] for i in emotion_ints]
         emotion_repeated = np.repeat(emotion_onehots, self.num_demos, axis=0)
@@ -371,9 +372,7 @@ class DC_WGAN():
         if not os.path.exists(path_name):
             os.makedirs(path_name)
         for i in range(len(outputs)):
-            emotion = i // self.num_demos
-            style = int(i - emotion * self.num_demos) % self.num_emotions
-            imsave(os.path.join(path_name, "s{}_e{}.png".format(int(style), int(emotion))), np.squeeze(outputs[i]))
+            imsave(os.path.join(path_name, "s{}_e{}.png".format(i, 0)), np.squeeze(outputs[i]))
         imsave(os.path.join(path_name, "image_in.png"), np.squeeze(demo_image))
         feed = {
             self.image_in: np.expand_dims(demo_image, 0),
@@ -404,7 +403,7 @@ class Generator(ModularGenerator):
         params['dim'] = 64
 
         # Input Convolution Layers
-        params['in_conv_layers'] = 3
+        params['in_conv_layers'] = 2
         params['in_conv_filters'] = [params['dim'] * 2, params['dim'] * 2, params['dim'] * 2]
         params['in_conv_dim'] = [3, 3, 3]
         params['in_conv_stride'] = [2, 2, 2]
@@ -415,7 +414,7 @@ class Generator(ModularGenerator):
         params['fc_dim'] = [1024]
         params['fc_activation_funcs'] = [tf.nn.relu] * params['fc_layers']
 
-        params['postembed_fc_layers'] = 2
+        params['postembed_fc_layers'] = 0
         params['postembed_fc_dim'] = [1024, 512]
         params['postembed_fc_activation_funcs'] = [tf.nn.relu] * params['postembed_fc_layers']
         params["postembed_fc_dropout"] = [0, 0]
@@ -590,11 +589,12 @@ def preprocess_imgs(imgs):
 
 if __name__ == '__main__':
     # mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+    d = Dataset((32, 32, 1))
+    d.read_samples('lfw/lfw_data')
+
     m = DC_WGAN()
     m.build()
 
-    d = Dataset(48)
-    d.read_pairs('./emotion_data/fer2013.csv')
 
     # train_examples = [
     #     mnist.train.images.reshape((-1, 28, 28, 1)),

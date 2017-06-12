@@ -16,7 +16,7 @@ from model_builder import ModularDiscriminator
 from utils.activation_funcs import leaky_relu
 from utils.util import minibatches, Progbar
 from lfw.dataset_builder import Dataset
-from scipy.misc import imsave
+from scipy.misc import imsave, toimage
 from tensorflow.examples.tutorials.mnist import input_data
 
 
@@ -32,9 +32,9 @@ class DC_WGAN():
         self.generator_epochs = 10000
         self.im_epochs = 1
         self.gaussian_epochs = 1
-        self.gen_lr = 1e-4
-        self.di_lr = 1e-3
-        self.dg_lr = 1e-3
+        self.gen_lr = 1e-5
+        self.di_lr = 1e-4
+        self.dg_lr = 1e-4
         self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
@@ -371,14 +371,17 @@ class DC_WGAN():
         if not os.path.exists(path_name):
             os.makedirs(path_name)
         for i in range(len(outputs)):
-            imsave(os.path.join(path_name, "s{}_e{}.png".format(i, 0)), np.squeeze(outputs[i]))
-        imsave(os.path.join(path_name, "image_in.png"), np.squeeze(demo_image))
+            im = toimage(np.squeeze(outputs[i]), cmin=0, cmax=1)
+            im.save(os.path.join(path_name, "s{}_e{}.png".format(i, 0)))
+        im = toimage(np.squeeze(demo_image), cmin=0, cmax=1)
+        im.save(os.path.join(path_name, "image_in.png"))
         feed = {
             self.image_in: np.expand_dims(demo_image, 0),
             self.emotion_label: [demo_emotion]
         }
         decoded = self.pred_on_image_batch(feed, sess)
-        imsave(os.path.join(path_name, "image_out.png"), np.squeeze(decoded))
+        im = toimage(np.squeeze(decoded), cmin=0, cmax=1)
+        im.save(os.path.join(path_name, "image_out.png"))
 
     def restore_from_checkpoint(self, sess, saver, epoch):
         save_path = os.path.join(self.ckpt_path, self.model_name + "_" + str(epoch))
@@ -605,5 +608,5 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
-        #m.restore_from_checkpoint(sess, saver, 500)
+        m.restore_from_checkpoint(sess, saver, 2300)
         m.fit(sess, saver, d.train_examples, d.dev_examples)

@@ -48,7 +48,7 @@ class ModularDiscriminator(Model):
                 try:
                     dropout_rate = self.config.fc_layers_dropout[i]
                     prev_output = tf.layers.dropout(
-                        inputs=prev_output, rate=dropout_rate)
+                        inputs=prev_output, rate=dropout_rate, training=True)
                 except AttributeError:
                     pass
             try:

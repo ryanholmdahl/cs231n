@@ -19,21 +19,24 @@ class Dataset:
     def read_pairs(self, file_path):
         if self.init:
             raise Exception("Dataset already initialized.")
-        with open (file_path, 'rb') as csvfile:
+        with open (file_path, 'rt') as csvfile:
             reader = csv.reader(csvfile)
             next(reader)  # Skip Header
             for row in enumerate(reader):
                 row = row[1]
                 emotion = int(row[0])
+                emotion_one_hot = np.zeros(7)
+                emotion_one_hot[emotion] = 1.0
                 usage = row[2]
                 img_pixels = row[1].split(' ')
                 pixels = np.asarray(img_pixels, dtype=np.int32).reshape(self.dims, self.dims)
+                pixels = np.expand_dims(pixels, 3)
                 if usage == 'Training' or usage == 'PublicTest':
                     self.train_examples[0].append(pixels)
-                    self.train_examples[1].append(emotion)
+                    self.train_examples[1].append(emotion_one_hot)
                 elif usage == 'PrivateTest':
                     self.dev_examples[0].append(pixels)
-                    self.dev_examples[1].append(emotion)
+                    self.dev_examples[1].append(emotion_one_hot)
         self.init = True
 
     def save_sets(self, out_path):

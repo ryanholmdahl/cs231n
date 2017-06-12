@@ -15,10 +15,9 @@ from adversarial_autoencoder import ModularGenerator
 from model_builder import ModularDiscriminator
 from utils.activation_funcs import leaky_relu
 from utils.util import minibatches, Progbar
-from data.dataset_builder import Dataset
+from lfw.dataset_builder import Dataset
 from scipy.misc import imsave
 from tensorflow.examples.tutorials.mnist import input_data
-import pickle
 
 
 class DC_WGAN():
@@ -30,12 +29,12 @@ class DC_WGAN():
         """
         # Learning Parameters
         self.discr_epochs = 5
-        self.generator_epochs = 200000
-        self.im_epochs = 1
-        self.gaussian_epochs = 5
-        self.gen_lr = 1e-5
-        self.di_lr = 1e-5
-        self.dg_lr = 1e-5  # unsure if 5 or 6 here...
+        self.generator_epochs = 1000
+        self.im_epochs = 0
+        self.gaussian_epochs = 1
+        self.gen_lr = 1e-4
+        self.di_lr = 1e-3
+        self.dg_lr = 1e-3
         self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
@@ -43,28 +42,29 @@ class DC_WGAN():
         self.beta1 = 0.5
         self.beta2 = 0.9
         self.lambda_cost = 10
-        self.gans_image_lambda = 0.002
+        self.gans_image_lambda = 0
         self.gans_gaussian_lambda = 0.01
         self.gans_reconstruction_lambda = 1
-        self.im_train_start = 1000
-        self.im_prop_start = 1002
+        self.im_train_start = 0
+        self.im_prop_start = 20
 
         # Logging Params
-        self.ckpt_path = "ckpt\\mnist_final"
+        self.ckpt_path = "ckpt"
         self.log_path = "log"
-        self.summaries_dir = "noim_summaries"
-        self.recon_path = "outputs/final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start300_prop302"
-        self.model_name = "final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start300_prop302"
+        self.recon_path = "outputs/100style_0image_5gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanhnoscale_inconv_1000_1005_slow_aae"
+        self.model_name = "100style_0image_5gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanhnoscale_inconv_1000_1005_slow_aae"
+        self.summaries_dir = "summaries"
 
         # Model Parameters
-        self.im_width = 28
-        self.im_height = 28
+        self.im_width = 32
+        self.im_height = 32
         self.im_channels = 1
         self.style_dim = 10
-        self.num_demos = 10
-        self.num_emotions = 10
+        self.num_demos = 20
+        self.num_emotions = 1
         self.imsave_scale_factor = 1
         self.train_iter = 0
+        self.cur_epoch = 0
 
         params = {}
         params['im_width'] = self.im_width
@@ -183,7 +183,7 @@ class DC_WGAN():
             self.image_logits_real = self.image_discriminator.add_prediction_op(
                 input_logits=preprocess_imgs(self.image_in), linear_inputs=self.emotion_label)
 
-            # Re-use discriminator weights on new inputs 
+            # Re-use discriminator weights on new inputs
             scope.reuse_variables()
             self.image_logits_fake = self.image_discriminator.add_prediction_op(
                 input_logits=preprocess_imgs(self.gen_images_autoencode), linear_inputs=self.emotion_label)
@@ -236,18 +236,18 @@ class DC_WGAN():
             gaussians_for_demo = np.random.normal(size=(self.num_demos, self.style_dim))
             self.merged_summaries = tf.summary.merge_all()
             self.train_writer = tf.summary.FileWriter(self.summaries_dir + "/train", sess.graph)
-            for gen_epoch in range(self.generator_epochs):
+            for gen_epoch in range(self.cur_epoch, self.generator_epochs, 1):
                 print("Generator Epoch {:} out of {:}".format(gen_epoch + 1, self.generator_epochs))
                 logfile.write(str(gen_epoch + 1))
                 tf_ops = ([self.dg_train_step] * self.gaussian_epochs) + (
                     [self.di_train_step] * self.im_epochs * (1 if gen_epoch > self.im_train_start else 0)) + [
-                             self.g_train_step] + [self.gdec_train_step] * (1 if gen_epoch > self.im_prop_start else 0)
+                             self.g_train_step] + ([self.gdec_train_step] * (1 if gen_epoch > self.im_prop_start else 0))
                 self.run_epoch(tf_ops, [(self.reconstruction_loss, "reconstruction"),
                                         (self.g_loss, "generator"), (self.dg_loss, "Gaussian"),
                                         (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
                                logfile)
-                if gen_epoch % 10 == 0:
-                    save_path = os.path.join(self.ckpt_path, self.model_name + "_" + str(gen_epoch))
+                if gen_epoch % 100 == 0:
+                    save_path = os.path.join(self.ckpt_path, self.model_name+"_"+str(gen_epoch))
                     print("Saving model in {}".format(save_path))
                     saver.save(sess, save_path)
                 # if gen_epoch > 0:
@@ -270,8 +270,8 @@ class DC_WGAN():
                 #                                     [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
                 #                                     sess,
                 #                                     train_examples, dev_set, self.batch_size, logfile)
-                self.demo(gaussians_for_demo,
-                          gen_epoch, sess, train_examples[0][gen_epoch % 1000], train_examples[1][gen_epoch % 1000])
+                self.demo(gaussians_for_demo, train_examples[0][gen_epoch % 1000], train_examples[1][gen_epoch % 1000],
+                          gen_epoch, sess)
 
     def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
         # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
@@ -294,32 +294,8 @@ class DC_WGAN():
         print("")
         return dev_loss_sum
 
-    def get_gaussians(self, sess, dev_set, num_samples, output_path):
-        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(dev_set, num_samples)):
-            feed = {
-                self.image_in: inputs_batch,
-                self.emotion_label: outputs_batch
-            }
-            style = np.array(sess.run(self.gen_styles, feed_dict=feed))
-            break
-        save_path = os.path.join(output_path, "gaussians.pkl")
-        pickle.dump(style, open(save_path, "wb"))
-
-    def get_reconstructions(self, sess, dev_set, num_samples, output_path):
-        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(dev_set, num_samples)):
-            feed = {
-                self.image_in: inputs_batch,
-                self.emotion_label: outputs_batch
-            }
-            outputs = np.array(sess.run(self.gen_images_autoencode, feed_dict=feed))
-            break
-        for i in range(len(outputs)):
-            imsave(os.path.join(output_path, "{}.png".format(i)), np.squeeze(inputs_batch[i]))
-            imsave(os.path.join(output_path, "{}_recon.png".format(i)), np.squeeze(outputs[i]))
-
     def train_on_batch(self, tf_ops, feed, sess):
         """Perform one step of gradient descent on the provided batch of data.
-
         Args:
             tf_ops: list of tf ops to compute
             feed: feed dict
@@ -342,7 +318,6 @@ class DC_WGAN():
 
     def eval_batches(self, loss_fn, sess, eval_set, num_batches):
         """Evaluate the loss on a number of given minibatches of a dataset.
-
         Args:
             loss_fn: loss function
             sess: tf.Session()
@@ -366,7 +341,6 @@ class DC_WGAN():
 
     def eval_on_batch(self, loss_fn, feed, sess):
         """Evaluate the loss on a given batch
-
         Args:
             loss_fn: loss function
             feed: feed dict
@@ -383,50 +357,39 @@ class DC_WGAN():
     def pred_on_image_batch(self, feed, sess):
         return sess.run(self.gen_images_autoencode, feed_dict=feed)
 
-    def demo(self, demo_gaussians, epoch, sess, demo_image=None, demo_emotion=None, output_path=None):
-        num_demos = demo_gaussians.shape[0]
+    def demo(self, demo_gaussians, demo_image, demo_emotion, epoch, sess):
+        print(demo_gaussians.shape)
         emotion_ints = np.arange(self.num_emotions)
         emotion_onehots = [[1 if i == t else 0 for t in range(self.num_emotions)] for i in emotion_ints]
-        emotion_repeated = np.repeat(emotion_onehots, num_demos, axis=0)
+        emotion_repeated = np.repeat(emotion_onehots, self.num_demos, axis=0)
         feed = {
             self.style_in: np.tile(demo_gaussians, (self.num_emotions, 1)),
             self.emotion_label: emotion_repeated
         }
         outputs = np.multiply(self.pred_on_style_batch(feed, sess), self.imsave_scale_factor)
-        if output_path is None:
-            path_name = os.path.join(self.recon_path, str(epoch))
-        else:
-            path_name = os.path.join(output_path, str(epoch))
+        path_name = os.path.join(self.recon_path, str(epoch))
         if not os.path.exists(path_name):
             os.makedirs(path_name)
         for i in range(len(outputs)):
-            emotion = i // num_demos
-            style = int(i - emotion * num_demos) % self.num_emotions
-            imsave(os.path.join(path_name, "s{}_e{}.png".format(int(style), int(emotion))), np.squeeze(outputs[i]))
-        if demo_image is not None:
-            imsave(os.path.join(path_name, "image_in.png"), np.squeeze(demo_image))
-            feed = {
-                self.image_in: np.expand_dims(demo_image, 0),
-                self.emotion_label: [demo_emotion]
-            }
-            decoded = self.pred_on_image_batch(feed, sess)
-            imsave(os.path.join(path_name, "image_out.png"), np.squeeze(decoded))
+            imsave(os.path.join(path_name, "s{}_e{}.png".format(i, 0)), np.squeeze(outputs[i]))
+        imsave(os.path.join(path_name, "image_in.png"), np.squeeze(demo_image))
+        feed = {
+            self.image_in: np.expand_dims(demo_image, 0),
+            self.emotion_label: [demo_emotion]
+        }
+        decoded = self.pred_on_image_batch(feed, sess)
+        imsave(os.path.join(path_name, "image_out.png"), np.squeeze(decoded))
 
     def restore_from_checkpoint(self, sess, saver, epoch):
         save_path = os.path.join(self.ckpt_path, self.model_name + "_" + str(epoch))
         saver.restore(sess, save_path)
+        self.cur_epoch = epoch
 
 
 class Generator(ModularGenerator):
     """
-    Input: N x 32 x 32 x 1
-    Output: N x 32 x 32 x 1
-
     Generator Network Architecture:
-
-    (FC Layer (1024 Hidden Units) + Leaky ReLU Activation Function) x 5
-    FC Layer (128 Hidden Units) + Leaky ReLU Activation Function)
-    Batch Norm
+    (FC Layer (1024 Hidden Units) + Leaky ReLU Activation Function) x 2
     FC Layer + Leaky ReLU -> N x 4 x 4 x 256
     Deconv Layer + Leaky ReLU -> N x 8 x 8 x 128
     Deconv Layer + Leaky ReLU -> N x 16 x 16 x 64
@@ -436,27 +399,44 @@ class Generator(ModularGenerator):
     def __init__(self, params):
         # Regularization
         params["fc_dropout"] = [0, 0]
+        params['dim'] = 64
 
         # Input Convolution Layers
-        params['in_conv_layers'] = 0
+        params['in_conv_layers'] = 2
+        params['in_conv_filters'] = [params['dim'] * 2, params['dim'] * 2, params['dim'] * 2]
+        params['in_conv_dim'] = [5, 5, 5] #was 333
+        params['in_conv_stride'] = [2, 2, 2]
+        params['in_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, tf.nn.relu]
 
         # Input FC Layers
-        params['fc_layers'] = 2
-        params['fc_dim'] = [1024, 1024]
+        params['fc_layers'] = 1
+        params['fc_dim'] = [1024]
         params['fc_activation_funcs'] = [tf.nn.relu] * params['fc_layers']
 
+        params['postembed_fc_layers'] = 0
+        params['postembed_fc_dim'] = [1024, 512]
+        params['postembed_fc_activation_funcs'] = [tf.nn.relu] * params['postembed_fc_layers']
+        params["postembed_fc_dropout"] = [0, 0]
+
+
         # Embedding Layer (FC -> Conv Intermediary Layer)
-        params['dim'] = 64
-        params['embed_channels'] = params['dim'] * 4
+        params['embed_channels'] = params['dim'] * 8
         params['embed_activation_func'] = tf.nn.relu
 
         # Output Deconvolution (Transpose Convolution) or Unconvolution Layers
         params["use_transpose"] = True
-        params['out_conv_layers'] = 2
-        params['out_conv_filters'] = [params['dim'] * 2, 1]
-        params['out_conv_dim'] = [3, 3]
-        params['out_conv_stride'] = [2, 2]
-        params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.sigmoid]
+        params['out_conv_layers'] = 3
+        params['out_conv_filters'] = [params['dim'] * 4, params['dim'] * 2, 1]
+        params['out_conv_dim'] = [3, 3, 3]
+        params['out_conv_stride'] = [2, 2, 2]
+
+        def scaled_sigmoid(logits):
+            return tf.nn.sigmoid(logits)
+
+        def scaled_tanh(logits):
+            return tf.nn.tanh(logits)
+
+        params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, scaled_tanh]
 
         # Model Info Params
         params["model_name"] = "generator"
@@ -469,9 +449,7 @@ class GaussianDiscriminator(ModularDiscriminator):
     """
     Input: N x 32 x 32 x 1
     Output: N x 1
-
     Discriminator Network Architecture:
-
     a bunch of fc
     """
 
@@ -533,9 +511,7 @@ class ImageDiscriminator(ModularDiscriminator):
     """
     Input: N x 32 x 32 x 1
     Output: N x 1
-
     Discriminator Network Architecture:
-
     Conv2 Layer + Leaky ReLU -> N x 16 x 16 x 64
     Conv2 Layer + Leaky ReLU -> N x 8 x 8 x 128
     Conv2 Layer + Leaky ReLU -> N x 4 x 4 x 256
@@ -550,13 +526,13 @@ class ImageDiscriminator(ModularDiscriminator):
         params['dim'] = 64
         params['in_conv_layers'] = 3
         params['in_conv_filters'] = [params['dim'], params['dim'] * 2, params['dim'] * 4]
-        params['in_conv_dim'] = [3, 3, 3]
+        params['in_conv_dim'] = [5, 5, 5]
         params['in_conv_stride'] = [2, 2, 2]
         params['in_conv_activation_func'] = [leaky_relu, leaky_relu, leaky_relu]
         params["fc_layers"] = 2
         params["fc_dim"] = [1024, 1]
         params["fc_activation_funcs"] = [leaky_relu, None]
-        params['fc_layers_dropout'] = [0.5, 0]
+        params['fc_layers_dropout'] = [0, 0]
 
         # Model Info Params
         params["model_name"] = "image_discriminator"
@@ -611,29 +587,23 @@ def preprocess_imgs(imgs):
 
 
 if __name__ == '__main__':
-    mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+    # mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+    d = Dataset((32, 32, 1))
+    d.read_samples('lfw/lfw_data')
+
     m = DC_WGAN()
     m.build()
 
+
     # train_examples = [
-    #     np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
+    #     mnist.train.images.reshape((-1, 28, 28, 1)),
     #     mnist.train.labels]
     # dev_examples = [
-    #     np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
+    #     mnist.validation.images.reshape((-1, 28, 28, 1)),
     #     mnist.validation.labels]
-
-    train_examples = [
-        mnist.train.images.reshape((-1, 28, 28, 1)),
-        mnist.train.labels]
-    dev_examples = [
-        mnist.validation.images.reshape((-1, 28, 28, 1)),
-        mnist.validation.labels]
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
-        #m.fit(sess, saver, train_examples, dev_examples)
-        m.restore_from_checkpoint(sess, saver, 830)
-        #m.get_gaussians(sess, dev_examples, 10000, "autoencoded_samples")
-        m.get_reconstructions(sess, dev_examples, 100, "mnist_recons")
-        #m.demo(np.random.normal(size=(10, m.style_dim)), 870, sess, output_path="more_gaussians")
+        #m.restore_from_checkpoint(sess, saver, 500)
+        m.fit(sess, saver, d.train_examples, d.dev_examples)

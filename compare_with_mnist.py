@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-target_dir = "recon_dual_weakim_weakgauss_outputs"
-target_iter = "340"
+target_dir = "final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_noise_start1000_prop1002"
+target_iter = "500"
 
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 train_images = mnist.train.images.reshape((-1, 28, 28))

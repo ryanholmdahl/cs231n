@@ -25,9 +25,12 @@ class Dataset:
             raise Exception("Dataset already initialized.")
         dir_files = [join(data_path, f) for f in listdir(data_path) if isfile(join(data_path, f))]
         im_list = []
+        count = 0
         for file in dir_files:
             im_in = imread(file, mode="L")
             im_list.append(im_in)
+            count += 1
+        print(count)
         examples_list = [self.train_examples, self.dev_examples, self.test_examples]
         assignments = np.random.choice([0, 1, 2], size=len(im_list), p=self.split)
         for im, i in zip(im_list, assignments):
@@ -39,7 +42,7 @@ class Dataset:
         self.init = True
 
     def resize(self, im):
-        new_im = imresize(im, self.dims)
+        new_im = imresize(im, self.dims) / 255.0
         new_im = np.reshape(new_im, self.dims)
         return new_im
 

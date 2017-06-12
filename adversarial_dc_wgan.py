@@ -304,6 +304,17 @@ class DC_WGAN():
         save_path = os.path.join(output_path, "gaussians.pkl")
         pickle.dump(style, open(save_path, "wb"))
 
+    def get_reconstructions(self, sess, dev_set, num_samples, output_path):
+        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(dev_set, num_samples)):
+            feed = {
+                self.image_in: inputs_batch,
+                self.emotion_label: outputs_batch
+            }
+            outputs = np.array(sess.run(self.gen_images_autoencode, feed_dict=feed))
+            break
+        for i in range(len(outputs)):
+            imsave(os.path.join(output_path, "{}.png".format(i)), np.squeeze(inputs_batch[i]))
+            imsave(os.path.join(output_path, "{}_recon.png".format(i)), np.squeeze(outputs[i]))
 
     def train_on_batch(self, tf_ops, feed, sess):
         """Perform one step of gradient descent on the provided batch of data.
@@ -622,5 +633,6 @@ if __name__ == '__main__':
         saver = tf.train.Saver()
         #m.fit(sess, saver, train_examples, dev_examples)
         m.restore_from_checkpoint(sess, saver, 830)
-        m.get_gaussians(sess, dev_examples, 10000, "autoencoded_samples")
+        #m.get_gaussians(sess, dev_examples, 10000, "autoencoded_samples")
+        m.get_reconstructions(sess, dev_examples, 100, "mnist_recons")
         #m.demo(np.random.normal(size=(10, m.style_dim)), 870, sess, output_path="more_gaussians")

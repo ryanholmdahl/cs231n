@@ -31,10 +31,10 @@ class DC_WGAN():
         self.discr_epochs = 5
         self.generator_epochs = 10000
         self.im_epochs = 1
-        self.gaussian_epochs = 5
-        self.gen_lr = 1e-5
-        self.di_lr = 1e-5
-        self.dg_lr = 1e-5  # unsure if 5 or 6 here...
+        self.gaussian_epochs = 1
+        self.gen_lr = 1e-4
+        self.di_lr = 1e-3
+        self.dg_lr = 1e-3
         self.lr_decay = 1
         self.lr_decay_steps = 100
         self.n_eval_batches = 10
@@ -42,17 +42,17 @@ class DC_WGAN():
         self.beta1 = 0.5
         self.beta2 = 0.9
         self.lambda_cost = 10
-        self.gans_image_lambda = 0.01
-        self.gans_gaussian_lambda = 10
+        self.gans_image_lambda = 0.001
+        self.gans_gaussian_lambda = 0.01
         self.gans_reconstruction_lambda = 1
-        self.im_train_start = 500
-        self.im_prop_start = 505
+        self.im_train_start = 0
+        self.im_prop_start = 20
 
         # Logging Params
         self.ckpt_path = "ckpt"
         self.log_path = "log"
-        self.recon_path = "outputs/10style_001image_10gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanh_inconv_500_505"
-        self.model_name = "10style_001image_10gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanh_inconv_500_505"
+        self.recon_path = "outputs/100style_0image_5gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanhnoscale_inconv_1000_1005_slow"
+        self.model_name = "100style_0image_5gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanhnoscale_inconv_1000_1005_slow"
         self.summaries_dir = "summaries"
 
         # Model Parameters
@@ -106,7 +106,6 @@ class DC_WGAN():
 
     def loss(self, image_logits_real, image_logits_fake, gaussian_logits_real, gaussian_logits_fake, real_imgs,
              generated_imgs, real_gaussians, fake_gaussians, emotions):
-        # Generator Cost
         # Generator Cost
         gen_image_cost = -tf.reduce_mean(image_logits_fake)
         gen_gaussian_cost = -tf.reduce_mean(gaussian_logits_fake)
@@ -242,12 +241,12 @@ class DC_WGAN():
                 logfile.write(str(gen_epoch + 1))
                 tf_ops = ([self.dg_train_step] * self.gaussian_epochs) + (
                     [self.di_train_step] * self.im_epochs * (1 if gen_epoch > self.im_train_start else 0)) + [
-                             self.g_train_step] + [self.gdec_train_step] * (1 if gen_epoch > self.im_prop_start else 0)
+                             self.g_train_step] + ([self.gdec_train_step] * (1 if gen_epoch > self.im_prop_start else 0))
                 self.run_epoch(tf_ops, [(self.reconstruction_loss, "reconstruction"),
                                         (self.g_loss, "generator"), (self.dg_loss, "Gaussian"),
                                         (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
                                logfile)
-                if gen_epoch % 10 == 0:
+                if gen_epoch % 100 == 0:
                     save_path = os.path.join(self.ckpt_path, self.model_name+"_"+str(gen_epoch))
                     print("Saving model in {}".format(save_path))
                     saver.save(sess, save_path)
@@ -405,7 +404,7 @@ class Generator(ModularGenerator):
         # Input Convolution Layers
         params['in_conv_layers'] = 2
         params['in_conv_filters'] = [params['dim'] * 2, params['dim'] * 2, params['dim'] * 2]
-        params['in_conv_dim'] = [3, 3, 3]
+        params['in_conv_dim'] = [5, 5, 5] #was 333
         params['in_conv_stride'] = [2, 2, 2]
         params['in_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, tf.nn.relu]
 
@@ -432,10 +431,10 @@ class Generator(ModularGenerator):
         params['out_conv_stride'] = [2, 2, 2]
 
         def scaled_sigmoid(logits):
-            return tf.nn.sigmoid(logits) * 255
+            return tf.nn.sigmoid(logits)
 
         def scaled_tanh(logits):
-            return tf.nn.tanh(logits) * 255
+            return tf.nn.tanh(logits)
 
         params['out_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, scaled_tanh]
 
@@ -527,13 +526,13 @@ class ImageDiscriminator(ModularDiscriminator):
         params['dim'] = 64
         params['in_conv_layers'] = 3
         params['in_conv_filters'] = [params['dim'], params['dim'] * 2, params['dim'] * 4]
-        params['in_conv_dim'] = [3, 3, 3]
+        params['in_conv_dim'] = [5, 5, 5]
         params['in_conv_stride'] = [2, 2, 2]
         params['in_conv_activation_func'] = [leaky_relu, leaky_relu, leaky_relu]
         params["fc_layers"] = 2
         params["fc_dim"] = [1024, 1]
         params["fc_activation_funcs"] = [leaky_relu, None]
-        params['fc_layers_dropout'] = [0.5, 0]
+        params['fc_layers_dropout'] = [0, 0]
 
         # Model Info Params
         params["model_name"] = "image_discriminator"
@@ -606,4 +605,5 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
+        #m.restore_from_checkpoint(sess, saver, 500)
         m.fit(sess, saver, d.train_examples, d.dev_examples)

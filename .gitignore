@@ -29,3 +29,6 @@ final_0002image_001gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_no
 face_summaries
 emotion_data/fer2013.csv
 lfw/lfw_data
+mnist_losses
+mnist_recons
+

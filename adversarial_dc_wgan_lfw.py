@@ -18,6 +18,7 @@ from utils.util import minibatches, Progbar
 from lfw.dataset_builder import Dataset
 from scipy.misc import imsave, toimage
 from tensorflow.examples.tutorials.mnist import input_data
+import pickle
 
 
 class DC_WGAN():
@@ -29,7 +30,7 @@ class DC_WGAN():
         """
         # Learning Parameters
         self.discr_epochs = 5
-        self.generator_epochs = 10000
+        self.generator_epochs = 1010
         self.im_epochs = 1
         self.gaussian_epochs = 1
         self.gen_lr = 1e-5
@@ -241,13 +242,18 @@ class DC_WGAN():
                 logfile.write(str(gen_epoch + 1))
                 tf_ops = ([self.dg_train_step] * self.gaussian_epochs) + (
                     [self.di_train_step] * self.im_epochs * (1 if gen_epoch > self.im_train_start else 0)) + [
-                             self.g_train_step] + ([self.gdec_train_step] * (1 if gen_epoch > self.im_prop_start else 0))
+                             self.g_train_step] + (
+                         [self.gdec_train_step] * (1 if gen_epoch > self.im_prop_start else 0))
                 self.run_epoch(tf_ops, [(self.reconstruction_loss, "reconstruction"),
                                         (self.g_loss, "generator"), (self.dg_loss, "Gaussian"),
                                         (self.di_loss, "image")], sess, train_examples, dev_set, self.batch_size,
                                logfile)
                 if gen_epoch % 100 == 0:
-                    save_path = os.path.join(self.ckpt_path, self.model_name+"_"+str(gen_epoch))
+                    save_path = os.path.join(self.ckpt_path, self.model_name + "_" + str(gen_epoch))
+                    print("Saving model in {}".format(save_path))
+                    saver.save(sess, save_path)
+                if gen_epoch % 1000 == 0:
+                    save_path = os.path.join("lfw_thousand_ckpt", self.model_name + "_" + str(gen_epoch))
                     print("Saving model in {}".format(save_path))
                     saver.save(sess, save_path)
                 # if gen_epoch > 0:
@@ -270,8 +276,9 @@ class DC_WGAN():
                 #                                     [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
                 #                                     sess,
                 #                                     train_examples, dev_set, self.batch_size, logfile)
-                self.demo(gaussians_for_demo, train_examples[0][gen_epoch % 1000], train_examples[1][gen_epoch % 1000],
-                          gen_epoch, sess)
+                self.demo(gaussians_for_demo,
+                          gen_epoch, sess, demo_image=train_examples[0][gen_epoch % 1000],
+                          demo_emotion=train_examples[1][gen_epoch % 1000])
 
     def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
         # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
@@ -357,7 +364,30 @@ class DC_WGAN():
     def pred_on_image_batch(self, feed, sess):
         return sess.run(self.gen_images_autoencode, feed_dict=feed)
 
-    def demo(self, demo_gaussians, demo_image, demo_emotion, epoch, sess):
+    def get_gaussians(self, sess, dev_set, num_samples, output_path):
+        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(dev_set, num_samples)):
+            feed = {
+                self.image_in: inputs_batch,
+                self.emotion_label: outputs_batch
+            }
+            style = np.array(sess.run(self.gen_styles, feed_dict=feed))
+            break
+        save_path = os.path.join(output_path, "gaussians.pkl")
+        pickle.dump(style, open(save_path, "wb"))
+
+    def get_reconstructions(self, sess, dev_set, num_samples, output_path):
+        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(dev_set, num_samples)):
+            feed = {
+                self.image_in: inputs_batch,
+                self.emotion_label: outputs_batch
+            }
+            outputs = np.array(sess.run(self.gen_images_autoencode, feed_dict=feed))
+            break
+        for i in range(len(outputs)):
+            imsave(os.path.join(output_path, "{}.png".format(i)), np.squeeze(inputs_batch[i]))
+            imsave(os.path.join(output_path, "{}_recon.png".format(i)), np.squeeze(outputs[i]))
+
+    def demo(self, demo_gaussians, epoch, sess, output_path=None, demo_image=None, demo_emotion=None):
         print(demo_gaussians.shape)
         emotion_ints = np.arange(self.num_emotions)
         emotion_onehots = [[1 if i == t else 0 for t in range(self.num_emotions)] for i in emotion_ints]
@@ -367,21 +397,25 @@ class DC_WGAN():
             self.emotion_label: emotion_repeated
         }
         outputs = np.multiply(self.pred_on_style_batch(feed, sess), self.imsave_scale_factor)
-        path_name = os.path.join(self.recon_path, str(epoch))
+        if output_path is None:
+            path_name = os.path.join(self.recon_path, str(epoch))
+        else:
+            path_name = os.path.join(output_path)
         if not os.path.exists(path_name):
             os.makedirs(path_name)
         for i in range(len(outputs)):
             im = toimage(np.squeeze(outputs[i]), cmin=0, cmax=1)
             im.save(os.path.join(path_name, "s{}_e{}.png".format(i, 0)))
-        im = toimage(np.squeeze(demo_image), cmin=0, cmax=1)
-        im.save(os.path.join(path_name, "image_in.png"))
-        feed = {
-            self.image_in: np.expand_dims(demo_image, 0),
-            self.emotion_label: [demo_emotion]
-        }
-        decoded = self.pred_on_image_batch(feed, sess)
-        im = toimage(np.squeeze(decoded), cmin=0, cmax=1)
-        im.save(os.path.join(path_name, "image_out.png"))
+        if demo_image is not None:
+            im = toimage(np.squeeze(demo_image), cmin=0, cmax=1)
+            im.save(os.path.join(path_name, "image_in.png"))
+            feed = {
+                self.image_in: np.expand_dims(demo_image, 0),
+                self.emotion_label: [demo_emotion]
+            }
+            decoded = self.pred_on_image_batch(feed, sess)
+            im = toimage(np.squeeze(decoded), cmin=0, cmax=1)
+            im.save(os.path.join(path_name, "image_out.png"))
 
     def restore_from_checkpoint(self, sess, saver, epoch):
         save_path = os.path.join(self.ckpt_path, self.model_name + "_" + str(epoch))
@@ -407,7 +441,7 @@ class Generator(ModularGenerator):
         # Input Convolution Layers
         params['in_conv_layers'] = 2
         params['in_conv_filters'] = [params['dim'] * 2, params['dim'] * 2, params['dim'] * 2]
-        params['in_conv_dim'] = [5, 5, 5] #was 333
+        params['in_conv_dim'] = [5, 5, 5]  # was 333
         params['in_conv_stride'] = [2, 2, 2]
         params['in_conv_activation_func'] = [tf.nn.relu, tf.nn.relu, tf.nn.relu]
 
@@ -420,7 +454,6 @@ class Generator(ModularGenerator):
         params['postembed_fc_dim'] = [1024, 512]
         params['postembed_fc_activation_funcs'] = [tf.nn.relu] * params['postembed_fc_layers']
         params["postembed_fc_dropout"] = [0, 0]
-
 
         # Embedding Layer (FC -> Conv Intermediary Layer)
         params['embed_channels'] = params['dim'] * 8
@@ -591,12 +624,11 @@ def preprocess_imgs(imgs):
 
 if __name__ == '__main__':
     # mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
-    d = Dataset((32, 32, 1))
+    d = Dataset((32, 32, 1), split=[0.8, 0.1, 0.1])
     d.read_samples('lfw/lfw_data')
 
     m = DC_WGAN()
     m.build()
-
 
     # train_examples = [
     #     mnist.train.images.reshape((-1, 28, 28, 1)),
@@ -608,5 +640,9 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
-        m.restore_from_checkpoint(sess, saver, 2300)
-        m.fit(sess, saver, d.train_examples, d.dev_examples)
+        m.restore_from_checkpoint(sess, saver, 800)
+        print(d.dev_examples[0].shape)
+        #m.fit(sess, saver, d.train_examples, d.dev_examples)
+        m.get_gaussians(sess, d.dev_examples, 1000, "autoencoded_lfw_samples")
+        m.get_reconstructions(sess, d.dev_examples, 100, "lfw_recons")
+        m.demo(np.random.normal(size=(20, m.style_dim)), 1010, sess, output_path="more_lfw_gaussians")

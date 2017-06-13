@@ -21,13 +21,19 @@ def read_csv(path, max_step, l, step_count):
 
 input_path = "mnist_losses"
 
+fig, ax1 = plt.subplots()
 plt.title("Generator Losses by Source")
-step, loss = read_csv("summaries/mnist_csv/run_.,tag_generator_image_discriminator_cost.csv", 800000, 0.002, 1000)
-plt.plot(step, loss, label="Output Dis.")
-step, loss = read_csv("summaries/mnist_csv/run_.,tag_generator_reconstruction_cost.csv", 800000, 1, 1000)
-plt.plot(step, loss, label="Reconstruction")
-plt.xlabel("Training Step")
-plt.ylabel("Cost")
-plt.legend()
+step, loss = read_csv("summaries/lfw0/run_.,tag_generator_image_discriminator_cost.csv", 200000, 0.001, 5000)
+ax1.plot(step, loss, label="Output Dis.", color='b')
+ax1.set_ylabel("Output Dis. Cost", color='b')
+ax1.tick_params('y', colors='b')
 
-plt.savefig(os.path.join(input_path, "MNIST_genlosses.png"))
+ax2 = ax1.twinx()
+step, loss = read_csv("summaries/lfw0/run_.,tag_generator_reconstruction_cost.csv", 200000, 1, 5000)
+ax2.plot(step, loss, label="Reconstruction", color='r')
+ax1.set_xlabel("Training Step")
+ax2.set_ylabel("Reconstruction Cost", color='r')
+ax2.tick_params('y', colors='r')
+fig.tight_layout()
+
+plt.savefig(os.path.join(input_path, "LFW_genlosses.png"))

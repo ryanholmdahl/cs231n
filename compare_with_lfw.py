@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-target_dir = "outputs\\100style_0image_5gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanhnoscale_inconv_1000_1005_slow"
+target_dir = "more_lfw_gaussians"
 target_iter = "2300"
 
 d = Dataset((32, 32, 1), split=[1, 0, 0])
@@ -12,7 +12,7 @@ d.read_samples('lfw/lfw_data')
 #train_images = np.concatenate((d.train_examples[0], d.dev_examples[0], d.test_examples[0]), axis=0)
 train_images = d.train_examples[0]
 print(train_images.shape)
-dir_path = os.path.join(target_dir, target_iter)
+dir_path = os.path.join(target_dir)#, target_iter)
 for filename in os.listdir(dir_path):
     if "_closest" in filename:
         continue

@@ -231,8 +231,6 @@ class DC_WGAN():
 
     def fit(self, sess, saver, train_examples, dev_set):
         with open(os.path.join(self.ckpt_path, "DC_WGAN"), "w") as logfile:
-            best_gen_dev_loss = float('inf')
-            best_discr_dev_loss = float('inf')
             gaussians_for_demo = np.random.normal(size=(self.num_demos, self.style_dim))
             self.merged_summaries = tf.summary.merge_all()
             self.train_writer = tf.summary.FileWriter(self.summaries_dir + "/train", sess.graph)
@@ -250,31 +248,10 @@ class DC_WGAN():
                     save_path = os.path.join(self.ckpt_path, self.model_name + "_" + str(gen_epoch))
                     print("Saving model in {}".format(save_path))
                     saver.save(sess, save_path)
-                # if gen_epoch > 0:
-                #     gen_tf_ops = self.g_train_step
-                #     gen_dev_loss = self.run_epoch(gen_tf_ops, [(self.reconstruction_loss, "reconstruction"),
-                #                                                (self.g_loss, "generator")], sess, train_examples,
-                #                                   dev_set, self.batch_size, logfile)
-                #     # if gen_dev_loss < best_gen_dev_loss:
-                #     #     best_gen_dev_loss = gen_dev_loss
-                #     #     save_path = os.path.join(self.ckpt_path, self.generator.config.model_name)
-                #     #     print("New best dev for generator! Saving model in {}".format(save_path))
-                #     #     saver.save(sess, save_path)
-                #
-                # for discr_epoch in range(self.discr_epochs):
-                #     print("Gen Epoch {} - Discriminator Epoch {:} out of {:}".format(gen_epoch + 1,
-                #                                                                      discr_epoch + 1,
-                #                                                                      self.discr_epochs))
-                #     discr_tf_ops = [self.dg_train_step]  # , self.di_train_step]
-                #     discr_dev_loss = self.run_epoch(discr_tf_ops,
-                #                                     [(self.dg_loss, "Gaussian"), (self.di_loss, "image")],
-                #                                     sess,
-                #                                     train_examples, dev_set, self.batch_size, logfile)
                 self.demo(gaussians_for_demo,
                           gen_epoch, sess, train_examples[0][gen_epoch % 1000], train_examples[1][gen_epoch % 1000])
 
     def run_epoch(self, tf_ops, loss_fns, sess, train_examples, dev_set, batch_size, logfile=None):
-        # prog = Progbar(target=1 + train_examples[0].shape[0] / batch_size)
         for i, (inputs_batch, outputs_batch) in enumerate(minibatches(train_examples, batch_size)):
             feed = {
                 self.image_in: inputs_batch,
@@ -282,7 +259,6 @@ class DC_WGAN():
                 self.gaussian_in: np.random.normal(size=(len(inputs_batch), self.style_dim))
             }
             self.train_on_batch(tf_ops, feed, sess)
-            # prog.update(i + 1, [("train loss", loss)])
         dev_loss_sum = 0
         for (loss_fn, loss_name) in loss_fns:
             train_loss = self.eval_batches(loss_fn, sess, train_examples, self.n_eval_batches)
@@ -290,7 +266,6 @@ class DC_WGAN():
             dev_loss = self.eval_batches(loss_fn, sess, dev_set, self.n_eval_batches)
             print("Dev {} loss: {:.6f}".format(loss_name, dev_loss))
             dev_loss_sum += dev_loss
-        # logfile.write(",{0:.5f},{1:.5f}\n".format(float(train_loss), float(dev_loss)))
         print("")
         return dev_loss_sum
 
@@ -328,14 +303,6 @@ class DC_WGAN():
         Returns:
             loss: loss over the batch (a scalar) or zero if not requested
         """
-        # if get_loss:
-        #     if discriminator:
-        #         _, _, dg_loss, di_loss = sess.run(tf_ops, feed_dict=feed)
-        #         return dg_loss, di_loss
-        #     else:
-        #         _, loss = sess.run(tf_ops, feed_dict=feed)
-        #         return loss
-        # else:
         sess.run(tf_ops, feed_dict=feed)
         self.train_writer.add_summary(sess.run(self.merged_summaries, feed_dict=feed), self.train_iter)
         self.train_iter += 1
@@ -615,13 +582,6 @@ if __name__ == '__main__':
     m = DC_WGAN()
     m.build()
 
-    # train_examples = [
-    #     np.pad(mnist.train.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
-    #     mnist.train.labels]
-    # dev_examples = [
-    #     np.pad(mnist.validation.images.reshape((-1, 28, 28, 1)), ((0, 0), (10, 10), (10, 10), (0, 0)), 'constant'),
-    #     mnist.validation.labels]
-
     train_examples = [
         mnist.train.images.reshape((-1, 28, 28, 1)),
         mnist.train.labels]
@@ -632,8 +592,8 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
-        #m.fit(sess, saver, train_examples, dev_examples)
-        m.restore_from_checkpoint(sess, saver, 830)
-        #m.get_gaussians(sess, dev_examples, 10000, "autoencoded_samples")
+        m.fit(sess, saver, train_examples, dev_examples)
+        #m.restore_from_checkpoint(sess, saver, 830)
+        m.get_gaussians(sess, dev_examples, 10000, "autoencoded_samples")
         m.get_reconstructions(sess, dev_examples, 100, "mnist_recons")
-        #m.demo(np.random.normal(size=(10, m.style_dim)), 870, sess, output_path="more_gaussians")
+        m.demo(np.random.normal(size=(10, m.style_dim)), 870, sess, output_path="more_gaussians")

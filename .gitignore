@@ -31,4 +31,11 @@ emotion_data/fer2013.csv
 lfw/lfw_data
 mnist_losses
 mnist_recons
+lfw_recons
+more_lfw_gaussians
+lfw_ckpt_2000
+lfw_losses
+lfw_thousand_ckpt
+autoencoded_lfw_samples
+
 

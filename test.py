@@ -63,10 +63,4 @@ m.build()
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
     m.fit(sess, None, train_examples, valid_examples)
-    # saver = tf.train.Saver()
-    # saver.save(sess, "ckpt/overfit")
-    # for i in range(len(train_tuples)):
-    #     show_image_example(sess, m, train_tuples[i][0], train_tuples[i][1], "figs/figt{}.png".format(i))
-    # for i in range(len(valid_tuples)):
-    #     show_image_example(sess, m, valid_tuples[i][0], valid_tuples[i][1], "figs/figv{}.png".format(i))
 

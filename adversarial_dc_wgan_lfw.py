@@ -30,8 +30,8 @@ class DC_WGAN():
         """
         # Learning Parameters
         self.discr_epochs = 5
-        self.generator_epochs = 1010
-        self.im_epochs = 1
+        self.generator_epochs = 700
+        self.im_epochs = 0
         self.gaussian_epochs = 1
         self.gen_lr = 1e-5
         self.di_lr = 1e-4
@@ -43,8 +43,8 @@ class DC_WGAN():
         self.beta1 = 0.5
         self.beta2 = 0.9
         self.lambda_cost = 10
-        self.gans_image_lambda = 0.001
-        self.gans_gaussian_lambda = 0.01
+        self.gans_image_lambda = 0.0
+        self.gans_gaussian_lambda = 0.05
         self.gans_reconstruction_lambda = 1
         self.im_train_start = 0
         self.im_prop_start = 20
@@ -52,8 +52,8 @@ class DC_WGAN():
         # Logging Params
         self.ckpt_path = "ckpt"
         self.log_path = "log"
-        self.recon_path = "outputs/100style_0image_5gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanhnoscale_inconv_1000_1005_slow"
-        self.model_name = "100style_0image_5gauss_5train_gaussianlabels_decoder_5gauss_1image_5dropout_lfw_tanhnoscale_inconv_1000_1005_slow"
+        self.recon_path = "outputs/aae_seed52_005gauss"
+        self.model_name = "aae_seed52_005gauss"
         self.summaries_dir = "summaries"
 
         # Model Parameters
@@ -335,17 +335,21 @@ class DC_WGAN():
             }
             style = np.array(sess.run(self.gen_styles, feed_dict=feed))
             break
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
         save_path = os.path.join(output_path, "gaussians.pkl")
         pickle.dump(style, open(save_path, "wb"))
 
     def get_reconstructions(self, sess, dev_set, num_samples, output_path):
-        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(dev_set, num_samples)):
+        for i, (inputs_batch, outputs_batch) in enumerate(minibatches(dev_set, num_samples, shuffle=False)):
             feed = {
                 self.image_in: inputs_batch,
                 self.emotion_label: outputs_batch
             }
             outputs = np.array(sess.run(self.gen_images_autoencode, feed_dict=feed))
             break
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
         for i in range(len(outputs)):
             im = toimage(np.squeeze(inputs_batch[i]), cmin=0, cmax=1)
             im.save(os.path.join(output_path, "{}.png".format(i)))
@@ -587,6 +591,7 @@ def preprocess_imgs(imgs):
 
 
 if __name__ == '__main__':
+    np.random.seed(52)
     d = Dataset((32, 32, 1), split=[0.8, 0.1, 0.1])
     d.read_samples('lfw/lfw_data')
 
@@ -595,8 +600,10 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        saver = tf.train.Saver()
+        saver = tf.train.Saver(max_to_keep=None)
+        # m.restore_from_checkpoint(sess, saver, 700)
         m.fit(sess, saver, d.train_examples, d.dev_examples)
-        m.get_gaussians(sess, d.dev_examples, 1000, "autoencoded_lfw_samples")
-        m.get_reconstructions(sess, d.dev_examples, 100, "lfw_recons")
-        m.demo(np.random.normal(size=(20, m.style_dim)), 1010, sess, output_path="more_lfw_gaussians")
+        m.get_gaussians(sess, d.dev_examples, 1000, "autoencoded_aae_seed52_005gauss_samples")
+        m.get_reconstructions(sess, d.dev_examples, 100, "aae_seed52_005gauss_recons")
+        m.demo(np.random.normal(size=(20, m.style_dim)), 700, sess,
+               output_path="more_aae_seed52_005gauss_gaussians")

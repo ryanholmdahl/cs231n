@@ -29,6 +29,7 @@ class DC_WGAN():
         """ Initialize the DC_WGAN.
         """
         # Learning Parameters
+        self.discr_epochs = 5
         self.generator_epochs = 200000
         self.im_epochs = 1
         self.gaussian_epochs = 5
